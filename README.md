@@ -2,8 +2,6 @@
 This code calculate possible ion contaminants after dipole based on the A/q difference. 
 The charge state distribution of all contaminants after stripping is then calculated with ETACH4.
 
-Code created by Jinyu Wan [wan@frib.msu.edu], 11/07 2025. 
-
 ## Setup (Required First!)
 
 1. Open `etacha_batch_run.py` and update these paths:
