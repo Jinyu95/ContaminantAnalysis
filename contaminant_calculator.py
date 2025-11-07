@@ -12,7 +12,7 @@ from pathlib import Path
 # Default species list to search for contaminants
 # This is a simplified list for the convenience of viewing results.
 # Users can modify this list as needed.
-FRIB_DEFAULT_SPECIES = ["H", "C", "N", "O", "Ne", "Ca", "Ag", "Xe", "Ar", "Si", "W", "U"]
+DEFAULT_SPECIES = ["H", "C", "N", "O", "Ne", "Ca", "Ag", "Xe", "Ar", "Si", "W", "U"]
 
 # Species database with mass numbers and possible charge states
 species_database = {
@@ -156,7 +156,7 @@ def find_contaminants(target_A, target_q, tolerance_percent=1.0, species_list=No
     tolerance_percent : float
         Tolerance percentage (default 1.0%)
     species_list : list
-        List of species symbols to check (default: FRIB_DEFAULT_SPECIES)
+        List of species symbols to check (default: DEFAULT_SPECIES)
     custom_charge_ranges : dict
         Custom charge ranges per species (optional)
     
@@ -165,7 +165,7 @@ def find_contaminants(target_A, target_q, tolerance_percent=1.0, species_list=No
     list of dict : Contaminants within tolerance
     """
     if species_list is None:
-        species_list = FRIB_DEFAULT_SPECIES
+        species_list = DEFAULT_SPECIES
     
     target_Aq = calculate_A_over_q(target_A, target_q)
     contaminants = []
@@ -219,7 +219,7 @@ def calculate_contaminants(target_A, target_q, tolerance_percent=1.0, species_li
     tolerance_percent : float
         Tolerance percentage (default 1.0%)
     species_list : list
-        List of species symbols to check (default: FRIB_DEFAULT_SPECIES)
+        List of species symbols to check (default: DEFAULT_SPECIES)
     custom_charge_ranges : dict
         Custom charge ranges per species (optional)
     verbose : bool
@@ -423,7 +423,7 @@ Examples:
             if i % 10 == 0:
                 print()
         print("\n")
-        print(f"\nDefault FRIB species: {', '.join(FRIB_DEFAULT_SPECIES)}")
+        print(f"\nDefault FRIB species: {', '.join(DEFAULT_SPECIES)}")
         return
     
     # Determine species list
@@ -433,7 +433,7 @@ Examples:
     elif args.species:
         species_list = args.species
     else:
-        species_list = FRIB_DEFAULT_SPECIES
+        species_list = DEFAULT_SPECIES
     
     # Calculate contaminants using the main function
     results = calculate_contaminants(

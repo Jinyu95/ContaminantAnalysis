@@ -1,6 +1,0 @@
-! Ap, Zp, q,  E, At, Zt, Thick, d
-! Use batch mode of ETACHA4 will ignore d.
-208 82 64  30 12 6 1.0 2.26
-208 82 64  50 12 6 2.0 2.26
-208 82 64  100 12 6 2.0 2.26
-208 82 64  1000 12 6 2.0 2.26

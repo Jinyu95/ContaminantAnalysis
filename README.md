@@ -8,9 +8,8 @@ The charge state distribution of all contaminants after stripping is then calcul
    - `ETACHA_EXE` - Path to your ETACHA4.exe
    - `RESULTS_DIR` - Where ETACHA saves results. Usually in Documents/LISEcute/results
 2. Copy `template.etacha` to this directory
-3. We select contaminants after dipole based on A/q difference. 
-This search is made within species range defined as FRIB_DEFAULT_SPECIES in contaminant_calculator.py.
-Change the definition of FRIB_DEFAULT_SPECIES to search a customized species range.
+3. Contaminant species range is defined as DEFAULT_SPECIES in contaminant_calculator.py.
+Change the definition of DEFAULT_SPECIES to search a customized species range.
 
 ## Usage
 
