@@ -7,8 +7,8 @@ Code created by Jinyu Wan [wan@frib.msu.edu], 11/07 2025.
 ## Setup (Required First!)
 
 1. Open `etacha_batch_run.py` and update these paths:
-   - Line 4: `ETACHA_EXE` - Path to your ETACHA4.exe
-   - Line 5: `RESULTS_DIR` - Where ETACHA saves results
+   - `ETACHA_EXE` - Path to your ETACHA4.exe
+   - `RESULTS_DIR` - Where ETACHA saves results. Usually in Documents/LISEcute/results
 2. Copy `template.etacha` to this directory
 3. We select contaminants after dipole based on A/q difference. 
 This search is made within species range defined as FRIB_DEFAULT_SPECIES in contaminant_calculator.py.

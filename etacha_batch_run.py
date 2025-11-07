@@ -7,7 +7,7 @@ from pathlib import Path
 ETACHA_EXE   = r"C:\Program Files\LISEcute\ETACHA4.exe"
 
 # Directory where ETACHA outputs results. Don't forget to clean up later.
-RESULTS_DIR  = Path(r"\\intranet.nscl.msu.edu\files\user\wan\My Documents\LISEcute\results")
+RESULTS_DIR  = Path(r"My Documents\LISEcute\results")
 
 OUTPUT_CSV   = "test1_results.csv"
 BETACHA      = "test1.betacha"
