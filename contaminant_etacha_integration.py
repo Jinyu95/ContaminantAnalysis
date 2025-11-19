@@ -58,15 +58,32 @@ def create_betacha_from_contaminants(results, beam_energy, target_material,
         
         target_A = results['target_A']
         target_q = results['target_q']
+        
+        # Try to find the target species from the contaminants list
         target_species = None
         for cont in contaminants:
             if cont['mass_number'] == target_A and cont['charge'] == target_q:
                 target_species = cont['species']
                 break
         
+        # If not found in contaminants, try to find a matching isotope in species_database
+        if not target_species:
+            from contaminant_calculator import species_database
+            for element, data in species_database.items():
+                for mass_amu, abundance in data['isotopes'].items():
+                    if int(round(mass_amu)) == target_A:
+                        target_species = element
+                        break
+                if target_species:
+                    break
+        
+        # Get atomic number
         target_Z = get_atomic_number(target_species) if target_species else 0
         if target_Z == 0:
+            # Fallback: estimate Z from A (this may be inaccurate)
             target_Z = int(target_A / 2.5)
+            print(f"Warning: Could not determine Z for A={target_A}. Using estimate: Z={target_Z}")
+
         
         f.write(f"! Main beam:\n")
         for E in energies:
@@ -121,20 +138,26 @@ def get_atomic_number(species_symbol):
     return Z_map.get(species_symbol, 0)
 
 
-def run_etacha_for_contaminants(betacha_file, output_csv="contaminant_charge_distributions.csv"):
+def run_etacha_for_contaminants(betacha_file, contaminant_results, 
+                                output_csv="contaminant_charge_distributions.csv",
+                                min_ratio_percent=0.1):
     """
-    Run ETACHA batch processing for contaminants and save results
+    Run ETACHA batch processing for contaminants and save results with abundance filtering
     
     Parameters:
     -----------
     betacha_file : str or Path
         Path to .betacha input file
+    contaminant_results : dict
+        Results from calculate_contaminants() containing abundance data
     output_csv : str
         Output CSV filename for results
+    min_ratio_percent : float
+        Minimum ratio (abundance × charge_fraction) in percent to include (default 0.1%)
     
     Returns:
     --------
-    Path : Path to results CSV file
+    Path : Path to results CSV file with filtered charge states
     """
     if not Path(ETACHA_EXE).exists():
         print(f"ETACHA not found at: {ETACHA_EXE}")
@@ -146,6 +169,15 @@ def run_etacha_for_contaminants(betacha_file, output_csv="contaminant_charge_dis
         return None
     
     betacha_path = Path(betacha_file)
+    
+    # Create abundance lookup from contaminant results
+    # Map by mass number only (isotope abundance doesn't depend on charge state)
+    abundance_map = {}  # {A: abundance_%}
+    for cont in contaminant_results['contaminants']:
+        A = cont['mass_number']
+        # Store the abundance for this mass number (same for all charge states)
+        if A not in abundance_map:
+            abundance_map[A] = cont.get('abundance_%', 0)
     
     # Read betacha file
     from etacha_batch_run import read_betacha
@@ -174,16 +206,22 @@ def run_etacha_for_contaminants(betacha_file, output_csv="contaminant_charge_dis
         
         QM, QF, SIG, IQMAX = compute_moments(qmap)
         
-        # Store the result
+        # Get natural abundance for this isotope (by mass number, not charge)
+        A = int(params["Ap"])  # Convert from string to int for lookup
+        q_initial = int(params["q"])
+        abundance = abundance_map.get(A, 0)
+        
+        # Store the result with abundance and calculate combined ratios
         result_dict = {
-            "Ab": params["Ap"],
+            "Ab": A,
             "Zb": params["Zp"],
-            "Qb": params["q"],
+            "Qb": q_initial,
             "Eb": params["E"],
             "At": params["At"],
             "Zt": params["Zt"],
             "thick": params["Thick"],
             "density": params["d"],
+            "abundance_%": abundance,  # Store abundance
             "QM": QM,
             "QF": QF,
             "sig(QF)": SIG,
@@ -194,8 +232,15 @@ def run_etacha_for_contaminants(betacha_file, output_csv="contaminant_charge_dis
             "finalFile": str(final_path) if final_path else ""
         }
         
-        for q, intensity in qmap.items():
-            result_dict[f"q{q}"] = intensity
+        # Store charge fractions and calculate combined ratios
+        for q, charge_fraction in qmap.items():
+            # Store charge fraction as percentage (qmap values are 0-1 decimals from ETACHA)
+            result_dict[f"q{q}"] = charge_fraction * 100.0  # Convert to percentage for CSV
+            
+            # Calculate combined ratio = abundance% × charge_fraction(decimal)
+            # Result is in percentage (e.g., 19.06 means 19.06%)
+            combined_ratio = abundance * charge_fraction  # abundance is %, charge_fraction is 0-1
+            result_dict[f"q{q}_ratio"] = combined_ratio
         
         results.append(result_dict)
     
@@ -203,20 +248,24 @@ def run_etacha_for_contaminants(betacha_file, output_csv="contaminant_charge_dis
     all_charge_states = set()
     for r in results:
         for key in r.keys():
-            if key.startswith('q') and key[1:].isdigit():
-                all_charge_states.add(int(key[1:]))
+            if key.startswith('q') and key[1:].lstrip('-').isdigit() and not key.endswith('_ratio'):
+                q_num = key[1:].lstrip('-')
+                if q_num.isdigit():
+                    all_charge_states.add(int(q_num))
     
     charge_columns = [f"q{q}" for q in sorted(all_charge_states, reverse=True)]
+    ratio_columns = [f"q{q}_ratio" for q in sorted(all_charge_states, reverse=True)]
     
     output_path = Path(output_csv)
     OUT_COLUMNS = [
         "Ab", "Zb", "Qb", "Eb",
         "At", "Zt", "thick", "density",
+        "abundance_%",  # Add abundance column
         "QM", "QF", "sig(QF)", "iQmax",
         "EnergyResidual",
         "EqThick-CS", "EqThick-Slope",
         "finalFile",
-    ] + charge_columns
+    ] + charge_columns + ratio_columns  # Include both fractions and ratios
     
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         w = csv.DictWriter(f, fieldnames=OUT_COLUMNS)
@@ -226,7 +275,48 @@ def run_etacha_for_contaminants(betacha_file, output_csv="contaminant_charge_dis
     
     print(f"\n✓ Results saved to: {output_path}")
     print(f"  Saved {len(charge_columns)} charge state columns")
+    print(f"  Note: Display below filters charge states with ratio < {min_ratio_percent}%")
+    
+    # Print summary of top charge states by combined ratio (filtered for display)
+    print(f"\nTop charge states by combined ratio (abundance × charge_fraction):")
+    print(f"  (Only showing states with combined ratio ≥ {min_ratio_percent}%)")
+    print(f"{'Isotope':<12} {'q_in':<6} {'q_out':<6} {'Abund%':<10} {'Charge%':<10} {'Ratio%':<10}")
+    print("-" * 70)
+    
+    # Collect all charge state entries
+    all_entries = []
+    for r in results:
+        A = r['Ab']
+        Z = int(r['Zb'])  # Ensure Z is integer
+        q_in = r['Qb']
+        abundance = r.get('abundance_%', 0)
+        species = get_element_symbol(Z)
+        
+        for q_state in sorted(all_charge_states, reverse=True):
+            ratio_key = f"q{q_state}_ratio"
+            charge_key = f"q{q_state}"
+            # Filter for display: only show if ratio >= threshold
+            if ratio_key in r:
+                ratio = r.get(ratio_key, 0)
+                if ratio >= min_ratio_percent:  # Apply threshold filter for display
+                    all_entries.append({
+                        'isotope': f"{species}-{A}",
+                        'q_in': q_in,
+                        'q_out': q_state,
+                        'abundance': abundance,
+                        'charge_fraction': r.get(charge_key, 0),
+                        'ratio': ratio
+                    })
+
+    
+    # Sort and display top 15
+    all_entries.sort(key=lambda x: x['ratio'], reverse=True)
+    for entry in all_entries[:15]:
+        print(f"{entry['isotope']:<12} {entry['q_in']:<6} {entry['q_out']:<6} "
+              f"{entry['abundance']:<10.3f} {entry['charge_fraction']:<10.3f} {entry['ratio']:<10.4f}")
+    
     return output_path
+
 
 
 def print_charge_distribution_summary(csv_file):
@@ -342,7 +432,6 @@ def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_mater
     tuple : (contaminant_results, etacha_results_csv_path)
     """
 
-    # Calculate contaminants
     contaminant_results = calculate_contaminants(
         target_A=target_A,
         target_q=target_q,
@@ -351,7 +440,6 @@ def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_mater
         verbose=True
     )
     
-    # Save contaminant list
     csv_file = f"{output_prefix}_list.csv"
     save_results_to_csv(contaminant_results, csv_file)
     
@@ -368,19 +456,24 @@ def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_mater
         betacha_file
     )
     
-    # Run ETACHA simulations
     results_csv = f"{output_prefix}_charge_distributions.csv"
-    etacha_results = run_etacha_for_contaminants(betacha_file, results_csv)
+    etacha_results = run_etacha_for_contaminants(
+        betacha_file, 
+        contaminant_results,  # Pass contaminant results for abundance filtering
+        results_csv,
+        min_ratio_percent=0.1
+    )
     
-    # Display results
     if etacha_results:
         print_charge_distribution_summary(etacha_results)
     
+    print("\n" + "="*80)
+    print("OUTPUT FILES:")
+    print("="*80)
     print(f"  • Contaminant list: {csv_file}")
     print(f"  • ETACHA input: {betacha_file}")
     if etacha_results:
-        print(f"  • Charge distributions: {results_csv}")
-    print("="*100 + "\n")
+        print(f"  • Charge distributions (with abundance filtering): {results_csv}")
     
     return contaminant_results, etacha_results
 
@@ -388,17 +481,17 @@ def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_mater
 if __name__ == "__main__":
     # Example: U-238 at q=34 through Li target
     lithium_target = {
-        'At': 6,     # Lithium-6
+        'At': 6.94,     # Lithium
         'Zt': 3,     # Z = 3 (Lithium)
-        'Thick': 1.0,  # 1.0 mg/cm²
-        'd': 1.89    # density 1.89 g/cm³
+        'Thick': 1.0,  # mg/cm²
+        'd': 0.51    # density g/cm³
     }
     
     contaminants, charge_results = calculate_and_run_contaminants(
         target_A=238,
-        target_q=34,
-        beam_energy=30.0,  # 30 MeV/u
+        target_q=35,
+        beam_energy=17.0,  # at stripper
         target_material=lithium_target,
         tolerance_percent=1.0,
-        output_prefix="u238_analysis"
+        output_prefix="U238_analysis"
     )

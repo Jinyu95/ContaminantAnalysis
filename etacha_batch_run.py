@@ -94,7 +94,12 @@ def parse_forExcel(path):
     header = re.split(r"\s+", lines[0])
     last   = re.split(r"\s+", lines[-1])
     row = dict(zip(header, last))
-    energy = float(row["Energy"]) if "Energy" in row else None
+    energy = None
+    if "Energy" in row and row["Energy"]:
+        try:
+            energy = float(row["Energy"])
+        except ValueError:
+            energy = None
     qmap = {}
     for h,val in row.items():
         if h.startswith("q") and re.fullmatch(r"q\d+", h):

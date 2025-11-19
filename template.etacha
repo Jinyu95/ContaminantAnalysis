@@ -9,8 +9,8 @@ A={{At}}
 Z={{Zt}}
 Thick={{Thick}}
 Density={{d}}
-MinStep=5
-MaxStep=2000
+MinStep=1
+MaxStep=5
 
 [EnergyLoss]
 # Safe defaults; ETACHA can recompute as it runs
@@ -20,7 +20,7 @@ dEdX1=0
 dEdX2=0
 
 [Options]
-Version=1
+Version=3
 ODE_Model=3
 ibin=0
 Ionization=0
@@ -30,5 +30,5 @@ EqThickness=true
 ShowPlots=0
 EvolutionPlot=0
 EnergyLoss=1
-UncertainAbs=1e-08
-UncertainRel=1e-04
+UncertainAbs=1e-09
+UncertainRel=1e-05

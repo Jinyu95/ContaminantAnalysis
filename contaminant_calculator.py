@@ -1,7 +1,7 @@
 """
 Contaminant Calculator for Heavy Ion Accelerators
 Calculates possible contaminants based on A/q
-Created from CSD_select.py GUI - command-line version by Jinyu Wan [wan@frib.msu.edu]
+Created from CSD_select.py by Jinyu Wan [wan@frib.msu.edu]
 """
 
 import json
@@ -10,147 +10,507 @@ import csv
 from pathlib import Path
 
 # Default species list to search for contaminants
-# This is a simplified list for the convenience of viewing results.
-# Users can modify this list as needed.
-DEFAULT_SPECIES = ["H", "C", "N", "O", "Ne", "Ca", "Ag", "Xe", "Ar", "Si", "W", "U"]
+DEFAULT_SPECIES = ["H", "He", "C", "N", "O", "Ne", "Si", "Ar", "Ca", "Ni", "Zn", "Se", "Kr", "Ag", "Xe", "Tm", "W", "Pt", "Hg", "Bi", "U"]
 
-# Species database with mass numbers and possible charge states
+# Species database with isotopes: {mass_amu: abundance_%}
+# Only naturally occurring isotopes with measurable abundances are included
 species_database = {
-    "H": {"mass_numbers": [1, 2, 3], "possible_charges": range(1, 2)},
-    "He": {"mass_numbers": [3, 4], "possible_charges": range(1, 3)},
-    "Li": {"mass_numbers": [6, 7], "possible_charges": range(1, 4)},
-    "Be": {"mass_numbers": [9], "possible_charges": range(1, 5)},
-    "B": {"mass_numbers": [10, 11], "possible_charges": range(1, 6)},
-    "C": {"mass_numbers": [12, 13, 14], "possible_charges": range(1, 7)},
-    "N": {"mass_numbers": [14, 15], "possible_charges": range(1, 8)},
-    "O": {"mass_numbers": [16, 17, 18], "possible_charges": range(1, 9)},
-    "F": {"mass_numbers": [19], "possible_charges": range(1, 10)},
-    "Ne": {"mass_numbers": [20, 21, 22], "possible_charges": range(1, 11)},
-    "Na": {"mass_numbers": [23], "possible_charges": range(1, 12)},
-    "Mg": {"mass_numbers": [24, 25, 26], "possible_charges": range(1, 13)},
-    "Al": {"mass_numbers": [27], "possible_charges": range(1, 14)},
-    "Si": {"mass_numbers": [28, 29, 30], "possible_charges": range(1, 15)},
-    "P": {"mass_numbers": [31], "possible_charges": range(1, 16)},
-    "S": {"mass_numbers": [32, 33, 34, 36], "possible_charges": range(1, 17)},
-    "Cl": {"mass_numbers": [35, 37], "possible_charges": range(1, 18)},
-    "Ar": {"mass_numbers": [36, 38, 40], "possible_charges": range(1, 19)},
-    "K": {"mass_numbers": [39, 40, 41], "possible_charges": range(1, 20)},
-    "Ca": {"mass_numbers": [40, 42, 43, 44, 46, 48], "possible_charges": range(1, 21)},
-    "Sc": {"mass_numbers": [45], "possible_charges": range(1, 22)},
-    "Ti": {"mass_numbers": [46, 47, 48, 49, 50], "possible_charges": range(1, 23)},
-    "V": {"mass_numbers": [50, 51], "possible_charges": range(1, 24)},
-    "Cr": {"mass_numbers": [50, 52, 53, 54], "possible_charges": range(1, 25)},
-    "Mn": {"mass_numbers": [55], "possible_charges": range(1, 26)},
-    "Fe": {"mass_numbers": [54, 56, 57, 58], "possible_charges": range(1, 27)},
-    "Co": {"mass_numbers": [59], "possible_charges": range(1, 28)},
-    "Ni": {"mass_numbers": [58, 60, 61, 62, 64], "possible_charges": range(1, 29)},
-    "Cu": {"mass_numbers": [63, 65], "possible_charges": range(1, 30)},
-    "Zn": {"mass_numbers": [64, 66, 67, 68, 70], "possible_charges": range(1, 31)},
-    "Ga": {"mass_numbers": [69, 71], "possible_charges": range(1, 32)},
-    "Ge": {"mass_numbers": [70, 72, 73, 74, 76], "possible_charges": range(1, 33)},
-    "As": {"mass_numbers": [75], "possible_charges": range(1, 34)},
-    "Se": {"mass_numbers": [74, 76, 77, 78, 80, 82], "possible_charges": range(1, 35)},
-    "Br": {"mass_numbers": [79, 81], "possible_charges": range(1, 36)},
-    "Kr": {"mass_numbers": [78, 80, 82, 83, 84, 86], "possible_charges": range(1, 37)},
-    "Rb": {"mass_numbers": [85, 87], "possible_charges": range(1, 38)},
-    "Sr": {"mass_numbers": [84, 86, 87, 88], "possible_charges": range(1, 39)},
-    "Y": {"mass_numbers": [89], "possible_charges": range(1, 40)},
-    "Zr": {"mass_numbers": [90, 91, 92, 94, 96], "possible_charges": range(1, 41)},
-    "Nb": {"mass_numbers": [93], "possible_charges": range(1, 42)},
-    "Mo": {"mass_numbers": [92, 94, 95, 96, 97, 98, 100], "possible_charges": range(1, 43)},
-    "Tc": {"mass_numbers": [97, 98, 99], "possible_charges": range(1, 44)},
-    "Ru": {"mass_numbers": [96, 98, 99, 100, 101, 102, 104], "possible_charges": range(1, 45)},
-    "Rh": {"mass_numbers": [103], "possible_charges": range(1, 46)},
-    "Pd": {"mass_numbers": [102, 104, 105, 106, 108, 110], "possible_charges": range(1, 47)},
-    "Ag": {"mass_numbers": [107, 109], "possible_charges": range(1, 48)},
-    "Cd": {"mass_numbers": [106, 108, 110, 111, 112, 113, 114, 116], "possible_charges": range(1, 49)},
-    "In": {"mass_numbers": [113, 115], "possible_charges": range(1, 50)},
-    "Sn": {"mass_numbers": [112, 114, 115, 116, 117, 118, 119, 120, 122, 124], "possible_charges": range(1, 51)},
-    "Sb": {"mass_numbers": [121, 123], "possible_charges": range(1, 52)},
-    "Te": {"mass_numbers": [120, 122, 123, 124, 125, 126, 128, 130], "possible_charges": range(1, 53)},
-    "I": {"mass_numbers": [127], "possible_charges": range(1, 54)},
-    "Xe": {"mass_numbers": [124, 126, 128, 129, 130, 131, 132, 134, 136], "possible_charges": range(1, 55)},
-    "Cs": {"mass_numbers": [133], "possible_charges": range(1, 56)},
-    "Ba": {"mass_numbers": [130, 132, 134, 135, 136, 137, 138], "possible_charges": range(1, 57)},
-    "La": {"mass_numbers": [138, 139], "possible_charges": range(1, 58)},
-    "Ce": {"mass_numbers": [136, 138, 140, 142], "possible_charges": range(1, 59)},
-    "Pr": {"mass_numbers": [141], "possible_charges": range(1, 60)},
-    "Nd": {"mass_numbers": [142, 143, 144, 145, 146, 148, 150], "possible_charges": range(1, 61)},
-    "Pm": {"mass_numbers": [145, 147], "possible_charges": range(1, 62)},
-    "Sm": {"mass_numbers": [144, 147, 148, 149, 150, 152, 154], "possible_charges": range(1, 63)},
-    "Eu": {"mass_numbers": [151, 153], "possible_charges": range(1, 64)},
-    "Gd": {"mass_numbers": [152, 154, 155, 156, 157, 158, 160], "possible_charges": range(1, 65)},
-    "Tb": {"mass_numbers": [159], "possible_charges": range(1, 66)},
-    "Dy": {"mass_numbers": [156, 158, 160, 161, 162, 163, 164], "possible_charges": range(1, 67)},
-    "Ho": {"mass_numbers": [165], "possible_charges": range(1, 68)},
-    "Er": {"mass_numbers": [162, 164, 166, 167, 168, 170], "possible_charges": range(1, 69)},
-    "Tm": {"mass_numbers": [169], "possible_charges": range(1, 70)},
-    "Yb": {"mass_numbers": [168, 170, 171, 172, 173, 174, 176], "possible_charges": range(1, 71)},
-    "Lu": {"mass_numbers": [175, 176], "possible_charges": range(1, 72)},
-    "Hf": {"mass_numbers": [174, 176, 177, 178, 179, 180], "possible_charges": range(1, 73)},
-    "Ta": {"mass_numbers": [180, 181], "possible_charges": range(1, 74)},
-    "W": {"mass_numbers": [180, 182, 183, 184, 186], "possible_charges": range(1, 75)},
-    "Re": {"mass_numbers": [185, 187], "possible_charges": range(1, 76)},
-    "Os": {"mass_numbers": [184, 186, 187, 188, 189, 190, 192], "possible_charges": range(1, 77)},
-    "Ir": {"mass_numbers": [191, 193], "possible_charges": range(1, 78)},
-    "Pt": {"mass_numbers": [190, 192, 194, 195, 196, 198], "possible_charges": range(1, 79)},
-    "Au": {"mass_numbers": [197], "possible_charges": range(1, 80)},
-    "Hg": {"mass_numbers": [196, 198, 199, 200, 201, 202, 204], "possible_charges": range(1, 81)},
-    "Tl": {"mass_numbers": [203, 205], "possible_charges": range(1, 82)},
-    "Pb": {"mass_numbers": [204, 206, 207, 208], "possible_charges": range(1, 83)},
-    "Bi": {"mass_numbers": [209], "possible_charges": range(1, 84)},
-    "Po": {"mass_numbers": [209, 210], "possible_charges": range(1, 85)},
-    "At": {"mass_numbers": [210, 211], "possible_charges": range(1, 86)},
-    "Rn": {"mass_numbers": [211, 220, 222], "possible_charges": range(1, 87)},
-    "Fr": {"mass_numbers": [223], "possible_charges": range(1, 88)},
-    "Ra": {"mass_numbers": [223, 224, 226, 228], "possible_charges": range(1, 89)},
-    "Ac": {"mass_numbers": [227], "possible_charges": range(1, 90)},
-    "Th": {"mass_numbers": [230, 232], "possible_charges": range(1, 91)},
-    "Pa": {"mass_numbers": [231], "possible_charges": range(1, 92)},
-    "U": {"mass_numbers": [233, 234, 235, 236, 238], "possible_charges": range(1, 93)},
-    "Np": {"mass_numbers": [236, 237], "possible_charges": range(1, 94)},
-    "Pu": {"mass_numbers": [238, 239, 240, 241, 242, 244], "possible_charges": range(1, 95)},
-    "Am": {"mass_numbers": [241, 243], "possible_charges": range(1, 96)},
-    "Cm": {"mass_numbers": [243, 244, 245, 246, 247, 248], "possible_charges": range(1, 97)},
-    "Bk": {"mass_numbers": [247, 249], "possible_charges": range(1, 98)},
-    "Cf": {"mass_numbers": [249, 250, 251, 252], "possible_charges": range(1, 99)},
-    "Es": {"mass_numbers": [252], "possible_charges": range(1, 100)},
-    "Fm": {"mass_numbers": [257], "possible_charges": range(1, 101)},
-    "Md": {"mass_numbers": [258, 260], "possible_charges": range(1, 102)},
-    "No": {"mass_numbers": [259], "possible_charges": range(1, 103)},
-    "Lr": {"mass_numbers": [262], "possible_charges": range(1, 104)},
-    "Rf": {"mass_numbers": [267], "possible_charges": range(1, 105)},
-    "Db": {"mass_numbers": [268], "possible_charges": range(1, 106)},
-    "Sg": {"mass_numbers": [271], "possible_charges": range(1, 107)},
-    "Bh": {"mass_numbers": [272], "possible_charges": range(1, 108)},
-    "Hs": {"mass_numbers": [270], "possible_charges": range(1, 109)},
-    "Mt": {"mass_numbers": [276], "possible_charges": range(1, 110)},
-    "Ds": {"mass_numbers": [281], "possible_charges": range(1, 111)},
-    "Rg": {"mass_numbers": [280], "possible_charges": range(1, 112)},
-    "Cn": {"mass_numbers": [285], "possible_charges": range(1, 113)},
-    "Nh": {"mass_numbers": [284], "possible_charges": range(1, 114)},
-    "Fl": {"mass_numbers": [289], "possible_charges": range(1, 115)},
-    "Mc": {"mass_numbers": [288], "possible_charges": range(1, 116)},
-    "Lv": {"mass_numbers": [293], "possible_charges": range(1, 117)},
-    "Ts": {"mass_numbers": [292], "possible_charges": range(1, 118)},
-    "Og": {"mass_numbers": [294], "possible_charges": range(1, 119)},
+    "H": {
+        "isotopes": {1.007825: 99.9885, 2.014102: 0.0115},
+        "possible_charges": range(1, 2)
+    },
+    "He": {
+        "isotopes": {3.016029: 0.000137, 4.002603: 99.999863},
+        "possible_charges": range(1, 3)
+    },
+    "Li": {
+        "isotopes": {6.015122: 7.59, 7.016004: 92.41},
+        "possible_charges": range(1, 4)
+    },
+    "Be": {
+        "isotopes": {9.012182: 100},
+        "possible_charges": range(1, 5)
+    },
+    "B": {
+        "isotopes": {10.012937: 19.9, 11.009305: 80.1},
+        "possible_charges": range(1, 6)
+    },
+    "C": {
+        "isotopes": {12.000000: 98.93, 13.003355: 1.07},
+        "possible_charges": range(1, 7)
+    },
+    "N": {
+        "isotopes": {14.003074: 99.632, 15.000109: 0.368},
+        "possible_charges": range(1, 8)
+    },
+    "O": {
+        "isotopes": {15.994915: 99.757, 16.999132: 0.038, 17.999160: 0.205},
+        "possible_charges": range(1, 9)
+    },
+    "F": {
+        "isotopes": {18.998403: 100},
+        "possible_charges": range(1, 10)
+    },
+    "Ne": {
+        "isotopes": {19.992440: 90.48, 20.993847: 0.27, 21.991386: 9.25},
+        "possible_charges": range(1, 11)
+    },
+    "Na": {
+        "isotopes": {22.989770: 100},
+        "possible_charges": range(1, 12)
+    },
+    "Mg": {
+        "isotopes": {23.985042: 78.99, 24.985837: 10.00, 25.982593: 11.01},
+        "possible_charges": range(1, 13)
+    },
+    "Al": {
+        "isotopes": {26.981538: 100},
+        "possible_charges": range(1, 14)
+    },
+    "Si": {
+        "isotopes": {27.976927: 92.2297, 28.976495: 4.6832, 29.973770: 3.0872},
+        "possible_charges": range(1, 15)
+    },
+    "P": {
+        "isotopes": {30.973762: 100},
+        "possible_charges": range(1, 16)
+    },
+    "S": {
+        "isotopes": {31.972071: 94.93, 32.971458: 0.76, 33.967867: 4.29, 35.967081: 0.02},
+        "possible_charges": range(1, 17)
+    },
+    "Cl": {
+        "isotopes": {34.968853: 75.78, 36.965903: 24.22},
+        "possible_charges": range(1, 18)
+    },
+    "Ar": {
+        "isotopes": {35.967546: 0.3365, 37.962732: 0.0632, 39.962383: 99.6003},
+        "possible_charges": range(1, 19)
+    },
+    "K": {
+        "isotopes": {38.963707: 93.2581, 39.963999: 0.0117, 40.961826: 6.7302},
+        "possible_charges": range(1, 20)
+    },
+    "Ca": {
+        "isotopes": {39.962591: 96.941, 41.958618: 0.647, 42.958767: 0.135, 43.955481: 2.086, 45.953693: 0.004, 47.952534: 0.187},
+        "possible_charges": range(1, 21)
+    },
+    "Sc": {
+        "isotopes": {44.955910: 100},
+        "possible_charges": range(1, 22)  # Z = 21
+    },
+    "Ti": {
+        "isotopes": {
+            45.952629: 8.25,
+            46.951764: 7.44,
+            47.947947: 73.72,
+            48.947871: 5.41,
+            49.944792: 5.18
+        },
+        "possible_charges": range(1, 23)  # Z = 22
+    },
+    "V": {
+        "isotopes": {49.947163: 0.250, 50.943964: 99.750},
+        "possible_charges": range(1, 24)  # Z = 23
+    },
+    "Cr": {
+        "isotopes": {
+            49.946050: 4.345,
+            51.940512: 83.789,
+            52.940654: 9.501,
+            53.938885: 2.365
+        },
+        "possible_charges": range(1, 25)  # Z = 24
+    },
+    "Mn": {
+        "isotopes": {54.938050: 100},
+        "possible_charges": range(1, 26)  # Z = 25
+    },
+    "Fe": {
+        "isotopes": {
+            53.939615: 5.845,
+            55.934942: 91.754,
+            56.935399: 2.119,
+            57.933280: 0.282
+        },
+        "possible_charges": range(1, 27)  # Z = 26
+    },
+    "Co": {
+        "isotopes": {58.933200: 100},
+        "possible_charges": range(1, 28)  # Z = 27
+    },
+    "Ni": {
+        "isotopes": {57.935348: 68.0769, 59.930791: 26.2231, 60.931060: 1.1399, 61.928349: 3.6345, 63.927970: 0.9256},
+        "possible_charges": range(1, 29)
+    },
+    "Zn": {
+        "isotopes": {63.929147: 48.63, 65.926037: 27.90, 66.927131: 4.10, 67.924848: 18.75, 69.925325: 0.62},
+        "possible_charges": range(1, 31)
+    },
+    "Se": {
+        "isotopes": {73.922477: 0.89, 75.919214: 9.37, 76.919915: 7.63, 77.917310: 23.77, 79.916522: 49.61, 81.916700: 8.73},
+        "possible_charges": range(1, 35)
+    },
+    "Kr": {
+        "isotopes": {77.920386: 0.35, 79.916378: 2.28, 81.913485: 11.58, 82.914136: 11.49, 83.911507: 57.00, 85.910610: 17.30},
+        "possible_charges": range(1, 37)
+    },
+    "Rb": {
+        "isotopes": {84.911789: 72.17, 86.909183: 27.83},
+        "possible_charges": range(1, 38)  # Z = 37
+    },
+    "Sr": {
+        "isotopes": {
+            83.913425: 0.56,
+            85.909262: 9.86,
+            86.908879: 7.00,
+            87.905614: 82.58
+        },
+        "possible_charges": range(1, 39)  # Z = 38
+    },
+    "Y": {
+        "isotopes": {88.905848: 100},
+        "possible_charges": range(1, 40)  # Z = 39
+    },
+    "Zr": {
+        "isotopes": {
+            89.904704: 51.45,
+            90.905645: 11.22,
+            91.905040: 17.15,
+            93.906316: 17.38,
+            95.908276: 2.80
+        },
+        "possible_charges": range(1, 41)  # Z = 40
+    },
+    "Nb": {
+        "isotopes": {92.906378: 100},
+        "possible_charges": range(1, 42)  # Z = 41
+    },
+    "Mo": {
+        "isotopes": {
+            91.906810: 14.84,
+            93.905088: 9.25,
+            94.905841: 15.92,
+            95.904679: 16.68,
+            96.906021: 9.55,
+            97.905408: 24.13,
+            99.907477: 9.63
+        },
+        "possible_charges": range(1, 43)  # Z = 42
+    },
+    # Tc has only "*" abundance in the reference → skipped
+    "Ru": {
+        "isotopes": {
+            95.907598: 5.54,
+            97.905287: 1.87,
+            98.905939: 12.76,
+            99.904220: 12.60,
+            100.905582: 17.06,
+            101.904350: 31.55,
+            103.905430: 18.62
+        },
+        "possible_charges": range(1, 45)  # Z = 44
+    },
+    "Rh": {
+        "isotopes": {102.905504: 100},
+        "possible_charges": range(1, 46)  # Z = 45
+    },
+    "Pd": {
+        "isotopes": {
+            101.905608: 1.02,
+            103.904035: 11.14,
+            104.905084: 22.33,
+            105.903483: 27.33,
+            107.903894: 26.46,
+            109.905152: 11.72
+        },
+        "possible_charges": range(1, 47)  # Z = 46
+    },
+    "Ag": {
+        "isotopes": {106.905093: 51.839, 108.904756: 48.161},
+        "possible_charges": range(1, 48)
+    },
+    "Cd": {
+        "isotopes": {
+            105.906458: 1.25,
+            107.904183: 0.89,
+            109.903006: 12.49,
+            110.904182: 12.80,
+            111.902757: 24.13,
+            112.904401: 12.22,
+            113.903358: 28.73,
+            115.904755: 7.49
+        },
+        "possible_charges": range(1, 49)  # Z = 48
+    },
+    "In": {
+        "isotopes": {112.904061: 4.29, 114.903878: 95.71},
+        "possible_charges": range(1, 50)  # Z = 49
+    },
+    "Sn": {
+        "isotopes": {
+            111.904821: 0.97,
+            113.902782: 0.66,
+            114.903346: 0.34,
+            115.901744: 14.54,
+            116.902954: 7.68,
+            117.901606: 24.22,
+            118.903309: 8.59,
+            119.902197: 32.58,
+            121.903440: 4.63,
+            123.905275: 5.79
+        },
+        "possible_charges": range(1, 51)  # Z = 50
+    },
+    "Sb": {
+        "isotopes": {120.903818: 57.21, 122.904216: 42.79},
+        "possible_charges": range(1, 52)  # Z = 51
+    },
+    "Te": {
+        "isotopes": {
+            119.904020: 0.09,
+            121.903047: 2.55,
+            122.904273: 0.89,
+            123.902819: 4.74,
+            124.904425: 7.07,
+            125.903306: 18.84,
+            127.904461: 31.74,
+            129.906223: 34.08
+        },
+        "possible_charges": range(1, 53)  # Z = 52
+    },
+    "I": {
+        "isotopes": {126.904468: 100},
+        "possible_charges": range(1, 54)  # Z = 53
+    },
+    "Xe": {
+        "isotopes": {123.905896: 0.09, 125.904269: 0.09, 127.903530: 1.92, 128.904779: 26.44, 129.903508: 4.08, 130.905082: 21.18, 131.904154: 26.89, 133.905395: 10.44, 135.907220: 8.87},
+        "possible_charges": range(1, 55)
+    },
+    "Cs": {
+        "isotopes": {132.905447: 100},
+        "possible_charges": range(1, 56)  # Z = 55
+    },
+    "Ba": {
+        "isotopes": {
+            129.906310: 0.106,
+            131.905056: 0.101,
+            133.904503: 2.417,
+            134.905683: 6.592,
+            135.904570: 7.854,
+            136.905821: 11.232,
+            137.905241: 71.698
+        },
+        "possible_charges": range(1, 57)  # Z = 56
+    },
+    "La": {
+        "isotopes": {137.907107: 0.090, 138.906348: 99.910},
+        "possible_charges": range(1, 58)  # Z = 57
+    },
+    "Ce": {
+        "isotopes": {
+            135.907144: 0.185,
+            137.905986: 0.251,
+            139.905434: 88.450,
+            141.909240: 11.114
+        },
+        "possible_charges": range(1, 59)  # Z = 58
+    },
+    "Pr": {
+        "isotopes": {140.907648: 100},
+        "possible_charges": range(1, 60)  # Z = 59
+    },
+    "Nd": {
+        "isotopes": {
+            141.907719: 27.2,
+            142.909810: 12.2,
+            143.910083: 23.8,
+            144.912569: 8.3,
+            145.913112: 17.2,
+            147.916889: 5.7,
+            149.920887: 5.6
+        },
+        "possible_charges": range(1, 61)  # Z = 60
+    },
+    # Pm only has "*" abundance → skipped
+    "Sm": {
+        "isotopes": {
+            143.911995: 3.07,
+            146.914893: 14.99,
+            147.914818: 11.24,
+            148.917180: 13.82,
+            149.917271: 7.38,
+            151.919728: 26.75,
+            153.922205: 22.75
+        },
+        "possible_charges": range(1, 63)  # Z = 62
+    },
+    "Eu": {
+        "isotopes": {150.919846: 47.81, 152.921226: 52.19},
+        "possible_charges": range(1, 64)  # Z = 63
+    },
+    "Gd": {
+        "isotopes": {
+            151.919788: 0.20,
+            153.920862: 2.18,
+            154.922619: 14.80,
+            155.922120: 20.47,
+            156.923957: 15.65,
+            157.924101: 24.84,
+            159.927051: 21.86
+        },
+        "possible_charges": range(1, 65)  # Z = 64
+    },
+    "Tb": {
+        "isotopes": {158.925343: 100},
+        "possible_charges": range(1, 66)  # Z = 65
+    },
+    "Dy": {
+        "isotopes": {
+            155.924278: 0.06,
+            157.924405: 0.10,
+            159.925194: 2.34,
+            160.926930: 18.91,
+            161.926795: 25.51,
+            162.928728: 24.90,
+            163.929171: 28.18
+        },
+        "possible_charges": range(1, 67)  # Z = 66
+    },
+    "Ho": {
+        "isotopes": {164.930319: 100},
+        "possible_charges": range(1, 68)  # Z = 67
+    },
+    "Er": {
+        "isotopes": {
+            161.928775: 0.14,
+            163.929197: 1.61,
+            165.930290: 33.61,
+            166.932045: 22.93,
+            167.932368: 26.78,
+            169.935460: 14.93
+        },
+        "possible_charges": range(1, 69)  # Z = 68
+    },
+    "Tm": {
+        "isotopes": {168.934211: 100},
+        "possible_charges": range(1, 70)
+    },
+    "Yb": {
+        "isotopes": {
+            167.933894: 0.13,
+            169.934759: 3.04,
+            170.936322: 14.28,
+            171.936378: 21.83,
+            172.938207: 16.13,
+            173.938858: 31.83,
+            175.942568: 12.76
+        },
+        "possible_charges": range(1, 71)  # Z = 70
+    },
+    "Lu": {
+        "isotopes": {174.940768: 97.41, 175.942682: 2.59},
+        "possible_charges": range(1, 72)  # Z = 71
+    },
+    "Hf": {
+        "isotopes": {
+            173.940040: 0.16,
+            175.941402: 5.26,
+            176.943220: 18.60,
+            177.943698: 27.28,
+            178.945815: 13.62,
+            179.946549: 35.08
+        },
+        "possible_charges": range(1, 73)  # Z = 72
+    },
+    "Ta": {
+        "isotopes": {179.947466: 0.012, 180.947996: 99.988},
+        "possible_charges": range(1, 74)  # Z = 73
+    },
+    "W": {
+        "isotopes": {179.946706: 0.12, 181.948206: 26.50, 182.950224: 14.31, 183.950933: 30.64, 185.954362: 28.43},
+        "possible_charges": range(1, 75)
+    },
+    "Re": {
+        "isotopes": {184.952956: 37.40, 186.955751: 62.60},
+        "possible_charges": range(1, 76)  # Z = 75
+    },
+    "Os": {
+        "isotopes": {
+            183.952491: 0.02,
+            185.953838: 1.59,
+            186.955748: 1.96,
+            187.955836: 13.24,
+            188.958145: 16.15,
+            189.958445: 26.26,
+            191.961479: 40.78
+        },
+        "possible_charges": range(1, 77)  # Z = 76
+    },
+    "Ir": {
+        "isotopes": {190.960591: 37.3, 192.962924: 62.7},
+        "possible_charges": range(1, 78)  # Z = 77
+    },
+    "Pt": {
+        "isotopes": {189.959932: 0.014, 191.961035: 0.782, 193.962664: 32.967, 194.964774: 33.832, 195.964935: 25.242, 197.967876: 7.163},
+        "possible_charges": range(1, 79)
+    },
+    "Au": {
+        "isotopes": {196.966552: 100},
+        "possible_charges": range(1, 80)  # Z = 79
+    },
+    "Hg": {
+        "isotopes": {195.965815: 0.15, 197.966752: 9.97, 198.968262: 16.87, 199.968309: 23.10, 200.970285: 13.18, 201.970626: 29.86, 203.973476: 6.87},
+        "possible_charges": range(1, 81)
+    },
+    "Tl": {
+        "isotopes": {202.972329: 29.524, 204.974412: 70.476},
+        "possible_charges": range(1, 82)  # Z = 81
+    },
+    "Pb": {
+        "isotopes": {
+            203.973029: 1.4,
+            205.974449: 24.1,
+            206.975881: 22.1,
+            207.976636: 52.4
+        },
+        "possible_charges": range(1, 83)  # Z = 82
+    },
+    "Bi": {
+        "isotopes": {208.980383: 100},
+        "possible_charges": range(1, 84)
+    },
+    # Po–Ac in the table are purely radiogenic (*), so left out
+    "Th": {
+        "isotopes": {232.038050: 100},
+        "possible_charges": range(1, 91)  # Z = 90
+    },
+    "Pa": {
+        "isotopes": {231.035879: 100},
+        "possible_charges": range(1, 92)  # Z = 91
+    },
+    "U": {
+        "isotopes": {234.040946: 0.0055, 235.043923: 0.7200, 238.050783: 99.2745},
+        "possible_charges": range(1, 93)
+    },
 }
 
 
-def calculate_A_over_q(mass_number, charge):
+def calculate_A_over_q(mass_amu, charge):
     """Calculate A/q ratio (beam rigidity)"""
-    return mass_number / charge
+    return mass_amu / charge
 
 
-def find_contaminants(target_A, target_q, tolerance_percent=1.0, species_list=None, 
+
+def find_contaminants(target_mass_amu, target_q, tolerance_percent=1.0, species_list=None, 
                       custom_charge_ranges=None):
     """
     Find potential contaminants within tolerance of target beam rigidity
     
     Parameters:
     -----------
-    target_A : int
-        Target mass number
+    target_mass_amu : float
+        Target mass in atomic mass units (can use accurate mass or mass number)
     target_q : int
         Target charge state
     tolerance_percent : float
@@ -167,15 +527,16 @@ def find_contaminants(target_A, target_q, tolerance_percent=1.0, species_list=No
     if species_list is None:
         species_list = DEFAULT_SPECIES
     
-    target_Aq = calculate_A_over_q(target_A, target_q)
+    target_Aq = calculate_A_over_q(target_mass_amu, target_q)
     contaminants = []
     
     for sp in species_list:
         if sp not in species_database:
             print(f"Warning: Species '{sp}' not in database, skipping...")
             continue
-            
-        mass_numbers = species_database[sp]["mass_numbers"]
+        
+        # Get isotopes dict with {mass_amu: abundance_%}
+        isotopes = species_database[sp]["isotopes"]
         
         # Use custom charge range if provided, otherwise use database default
         if custom_charge_ranges and sp in custom_charge_ranges:
@@ -183,20 +544,25 @@ def find_contaminants(target_A, target_q, tolerance_percent=1.0, species_list=No
         else:
             charge_range = species_database[sp]["possible_charges"]
         
-        for A_sp in mass_numbers:
+        for mass_amu, abundance in isotopes.items():
+            # All isotopes in the database have natural abundance (already filtered)
+            mass_number = int(round(mass_amu))  # For display purposes
+            
             for q_sp in charge_range:
-                aq_sp = calculate_A_over_q(A_sp, q_sp)
+                aq_sp = calculate_A_over_q(mass_amu, q_sp)
                 rel_diff = abs(aq_sp - target_Aq) / target_Aq
                 
                 if rel_diff <= tolerance_percent / 100.0:
                     contaminants.append({
                         "species": sp,
-                        "isotope": f"{sp}-{A_sp}",
-                        "mass_number": A_sp,
+                        "isotope": f"{sp}-{mass_number}",
+                        "mass_number": mass_number,
+                        "mass_amu": mass_amu,  # Store accurate mass
                         "charge": q_sp,
                         "A/q": aq_sp,
                         "rel_diff_%": rel_diff * 100,
-                        "abs_diff": abs(aq_sp - target_Aq)
+                        "abs_diff": abs(aq_sp - target_Aq),
+                        "abundance_%": abundance  # Natural abundance percentage
                     })
     
     # Sort by absolute difference from target
@@ -311,8 +677,8 @@ def save_results_to_csv(results, filename="contaminants_output.csv"):
         
         # Write contaminants table header
         writer.writerow(['Contaminant Data'])
-        writer.writerow(['Species', 'Isotope', 'Mass Number (A)', 'Charge State (q)', 
-                        'A/q Ratio', 'Relative Difference (%)', 'Absolute Difference'])
+        writer.writerow(['Species', 'Isotope', 'Mass Number (A)', 'Mass (amu)', 'Charge State (q)', 
+                        'A/q Ratio', 'Relative Difference (%)', 'Absolute Difference', 'Natural Abundance (%)'])
         
         # Write contaminant data
         for cont in contaminants:
@@ -320,10 +686,12 @@ def save_results_to_csv(results, filename="contaminants_output.csv"):
                 cont['species'],
                 cont['isotope'],
                 cont['mass_number'],
+                f"{cont['mass_amu']:.6f}",
                 cont['charge'],
                 f"{cont['A/q']:.6f}",
                 f"{cont['rel_diff_%']:.6f}",
-                f"{cont['abs_diff']:.6f}"
+                f"{cont['abs_diff']:.6f}",
+                f"{cont.get('abundance_%', 0):.4f}"
             ])
     
     print(f"Results saved to: {filename}")

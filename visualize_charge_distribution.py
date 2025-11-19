@@ -202,8 +202,7 @@ def plot_charge_distribution(contaminants_csv, charge_dist_csv, output_image="ch
     fig = plt.figure(figsize=(16, 8))
     # Top panel: Before stripping 
     ax1 = plt.subplot(2, 1, 1)
-    ax1.set_title('Before stripping', 
-                  fontsize=14)
+    ax1.set_title('Before stripping', fontsize=14)
     
     before_data_sorted = sorted(before_data, key=lambda x: x['Aq'])
     
@@ -214,70 +213,93 @@ def plot_charge_distribution(contaminants_csv, charge_dist_csv, output_image="ch
     n_species = len(before_data_sorted)
     colors = cm.rainbow(np.linspace(0, 1, n_species))
     
+    # Create marker types matching the second panel
+    marker_types = ['o', '^', 'v', '<', '>', 's', 'D', 'p', '*', 'h']
+    species_markers = {}
+    species_colors = {}
+    
+    for i, data in enumerate(before_data_sorted):
+        isotope = data['isotope']
+        species_markers[isotope] = marker_types[i % len(marker_types)]
+        species_colors[isotope] = colors[i]
+    
+    # Group species by A/q to handle overlaps
     aq_groups = defaultdict(list)
     for i, data in enumerate(before_data_sorted):
         aq_rounded = round(data['Aq'], 6)  
         aq_groups[aq_rounded].append((i, data))
     
-    all_labels = [] 
+    # Plot markers at each A/q position
+    legend_handles = []
+    plotted_species = set()
     
     for aq_value, species_list in sorted(aq_groups.items()):
         n_species_at_aq = len(species_list)
-        segment_height = 1.0 / n_species_at_aq  
         
-        for segment_idx, (color_idx, data) in enumerate(species_list):
-            color = colors[color_idx]
-            species_label = format_species(data['isotope'], data['q'])
+        # For multiple species at same A/q, stack them vertically
+        base_height = 0.5
+        spacing = 0.12
+        
+        for idx, (color_idx, data) in enumerate(species_list):
+            isotope = data['isotope']
+            color = species_colors[isotope]
+            marker = species_markers[isotope]
+            species_label = format_species_no_charge(isotope)
             
-            bottom = segment_idx * segment_height
+            # Calculate y position: stack multiple species
+            if n_species_at_aq == 1:
+                y_pos = base_height
+            else:
+                # Center the stack around base_height
+                total_span = (n_species_at_aq - 1) * spacing
+                y_pos = base_height - total_span/2 + idx * spacing
             
-            bar = ax1.bar(aq_value, segment_height, width=0.005, 
-                         bottom=bottom, color=color, 
-                         alpha=0.8, edgecolor='black', linewidth=0.5)
+            # Draw stem from axis to marker
+            ax1.plot([aq_value, aq_value], [0, y_pos], 
+                    color=color, alpha=0.5, linewidth=2, zorder=1)
             
-            text_x = aq_value
-            text_y = bottom + segment_height / 2  
+            # Draw marker
+            marker_size = 180 if data['is_target'] else 100
+            marker_edge = 2.5 if data['is_target'] else 1
+            ax1.scatter(aq_value, y_pos, s=marker_size, c=[color], 
+                       marker=marker, edgecolor='black', linewidth=marker_edge, 
+                       alpha=0.9, zorder=3)
             
-            # Check for nearby labels and adjust height if needed
-            min_x_distance = 0.02  # Minimum A/q distance to consider overlap
-            min_y_distance = 0.08  # Minimum vertical distance
-            
-            for prev_x, prev_y in all_labels:
-                if abs(text_x - prev_x) < min_x_distance and abs(text_y - prev_y) < min_y_distance:
-                    text_y += 0.1
-            
-            all_labels.append((text_x, text_y))
-            
-            fontsize = max(6, min(9, 100 * segment_height))  # Scale font with segment size
-            fontweight = 'bold' if data['is_target'] else 'normal'
-            
-            ax1.text(text_x, text_y, species_label, 
-                    ha='center', va='center', fontsize=fontsize, 
-                    fontweight=fontweight, color='white',
-                    bbox=dict(boxstyle='round,pad=0.2', facecolor='black', 
-                             edgecolor='none', alpha=0.6))
+            # Create legend entry (only once per species)
+            if isotope not in plotted_species:
+                from matplotlib.lines import Line2D
+                if data['is_target']:
+                    handle = Line2D([0], [0], marker=marker, color='w', 
+                                  markerfacecolor=color, markersize=12,
+                                  markeredgecolor='black', markeredgewidth=2,
+                                  label=f"{species_label} (Primary beam)")
+                else:
+                    handle = Line2D([0], [0], marker=marker, color='w', 
+                                  markerfacecolor=color, markersize=10,
+                                  markeredgecolor='black', markeredgewidth=0.5,
+                                  label=species_label)
+                legend_handles.append(handle)
+                plotted_species.add(isotope)
     
     ax1.set_xlabel('A/q', fontsize=12)
-    ax1.set_ylim([0, 1.05])
+    ax1.set_ylabel('Species', fontsize=12)
+    ax1.set_ylim([0, 1.0])
     ax1.set_yticks([])  
-    ax1.grid(axis='y', alpha=0.3)
+    ax1.grid(axis='x', alpha=0.3, linestyle='--')
+    # ax1.spines['left'].set_visible(False)
+    # ax1.spines['top'].set_visible(False)
+    # ax1.spines['right'].set_visible(False)
+    ax1.legend(handles=legend_handles, loc='upper left', ncol=5, fontsize=9, 
+              framealpha=0.9)
     
     # Bottom panel: After stripping
     ax2 = plt.subplot(2, 1, 2)
     ax2.set_title('After stripping (Maximum peak normalized to 1)', fontsize=14)
     ax2.set_ylabel('Relative Intensity', fontsize=12)
     
-    species_colors = {}
-    for i, data in enumerate(before_data_sorted):
-        species_colors[data['isotope']] = colors[i]
-    
-    marker_types = ['o', '^', 'v', '<', '>']
-    species_markers = {}
-    for i, data in enumerate(before_data_sorted):
-        species_markers[data['isotope']] = marker_types[i % len(marker_types)]
-    
-    legend_handles = []
-    plotted_species = set()
+    # Use the same colors and markers as the top panel
+    legend_handles_2 = []
+    plotted_species_2 = set()
     
     for species in after_data:
         isotope = species['isotope']
@@ -304,7 +326,7 @@ def plot_charge_distribution(contaminants_csv, charge_dist_csv, output_image="ch
             ax2.plot(Aq, intensity, marker=marker, color=color, markersize=8, 
                     markeredgecolor='black', markeredgewidth=1.5)
         
-        if isotope not in plotted_species:
+        if isotope not in plotted_species_2:
             label = format_species_no_charge(isotope)
             from matplotlib.lines import Line2D
             if is_target:
@@ -317,13 +339,13 @@ def plot_charge_distribution(contaminants_csv, charge_dist_csv, output_image="ch
                               markerfacecolor=color, markersize=10,
                               markeredgecolor='black', markeredgewidth=0.5,
                               label=label)
-            legend_handles.append(handle)
-            plotted_species.add(isotope)
+            legend_handles_2.append(handle)
+            plotted_species_2.add(isotope)
     
     ax2.set_xlabel('A/q', fontsize=12)
     ax2.set_ylim([0, 1.4])
     ax2.grid(axis='y', alpha=0.3)
-    ax2.legend(handles=legend_handles, loc='upper left', ncol=5, fontsize=9, 
+    ax2.legend(handles=legend_handles_2, loc='upper left', ncol=5, fontsize=9, 
               framealpha=0.9)
     
     plt.tight_layout()

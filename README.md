@@ -1,6 +1,7 @@
-# Contaminant Calculator + ETACHA4 Integration
-This code calculate possible ion contaminants after dipole based on the A/q difference. 
-The charge state distribution of all contaminants after stripping is then calculated with ETACH4.
+# Contaminant Analysis + ETACHA4 + Beam Tracking
+This code calculates possible ion contaminants based on the A/q difference. 
+The charge state distribution of all contaminants after stripping is calculated with ETACHA4.
+Beam tracking and beam loss analysis are then implemented with JuTrack (pyJuTrack).
 
 ## Setup (Required First!)
 
@@ -9,29 +10,21 @@ The charge state distribution of all contaminants after stripping is then calcul
    - `RESULTS_DIR` - Where ETACHA saves results. Usually in Documents/LISEcute/results
 2. Copy `template.etacha` to this directory
 3. Contaminant species range is defined as DEFAULT_SPECIES in contaminant_calculator.py.
-Change the definition of DEFAULT_SPECIES to search a customized species range.
+   Change the definition of DEFAULT_SPECIES to search a customized species range.
+4. For beam tracking, install pyJuTrack (Python version 3.13 or later is required!):
+   ```bash
+   git clone https://github.com/MSU-Beam-Dynamics/JuTrack.jl.git
+   cd JuTrack.jl/python_integration
+   pip install -e .
+   ```
 
 ## Usage
 
-```python
-from contaminant_etacha_integration import calculate_and_run_contaminants
+### See run_analysis.py. The first run of JuTrack will install all dependencies that takes a few minutes.
+### Don't forget to clean up the results folder `RESULTS_DIR` after running the code.
 
-# carbon stripper
-carbon_target = {'At': 12, 'Zt': 6, 'Thick': 1.0, 'd': 2.26}
+### Visualize Charge Distributions before and after stripper
 
-contaminants, results = calculate_and_run_contaminants(
-    target_A=208,        # Main beam mass number at dipole
-    target_q=64,         # Main beam charge state at dipole
-    beam_energy=30.0,    # Energy in MeV/u at stripper
-    target_material=carbon_target,
-    output_prefix="my_analysis"
-)
-```
-
-This creates: `my_analysis_list.csv`,  `my_analysis_charge_distributions.csv`.
-The first one is contaminant list and the second one is charge state distribution of the contanminants after stripping.
-
-To plot the results, run 
 ```python
 from visualize_charge_distribution import plot_charge_distribution
 contaminants_file = "my_analysis_list.csv"
