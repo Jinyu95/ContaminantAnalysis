@@ -503,7 +503,7 @@ def calculate_A_over_q(mass_amu, charge):
 
 
 def find_contaminants(target_mass_amu, target_q, tolerance_percent=1.0, species_list=None, 
-                      custom_charge_ranges=None):
+                      custom_charge_ranges=None, use_exact_mass=False):
     """
     Find potential contaminants within tolerance of target beam rigidity
     
@@ -519,6 +519,8 @@ def find_contaminants(target_mass_amu, target_q, tolerance_percent=1.0, species_
         List of species symbols to check (default: DEFAULT_SPECIES)
     custom_charge_ranges : dict
         Custom charge ranges per species (optional)
+    use_exact_mass : bool
+        If True, use exact atomic mass. If False, use rounded mass number. (default: False)
     
     Returns:
     --------
@@ -545,11 +547,13 @@ def find_contaminants(target_mass_amu, target_q, tolerance_percent=1.0, species_
             charge_range = species_database[sp]["possible_charges"]
         
         for mass_amu, abundance in isotopes.items():
-            # All isotopes in the database have natural abundance (already filtered)
             mass_number = int(round(mass_amu))  # For display purposes
             
+            # Determine mass to use for calculation
+            calc_mass = mass_amu if use_exact_mass else mass_number
+            
             for q_sp in charge_range:
-                aq_sp = calculate_A_over_q(mass_amu, q_sp)
+                aq_sp = calculate_A_over_q(calc_mass, q_sp)
                 rel_diff = abs(aq_sp - target_Aq) / target_Aq
                 
                 if rel_diff <= tolerance_percent / 100.0:
@@ -572,7 +576,7 @@ def find_contaminants(target_mass_amu, target_q, tolerance_percent=1.0, species_
 
 
 def calculate_contaminants(target_A, target_q, tolerance_percent=1.0, species_list=None, 
-                          custom_charge_ranges=None, verbose=True):
+                          custom_charge_ranges=None, verbose=True, use_exact_mass=False):
     """
     Main callable function to calculate potential contaminants
     
@@ -590,6 +594,8 @@ def calculate_contaminants(target_A, target_q, tolerance_percent=1.0, species_li
         Custom charge ranges per species (optional)
     verbose : bool
         If True, print results to console (default: True)
+    use_exact_mass : bool
+        If True, use exact atomic mass. If False, use rounded mass number. (default: False)
     
     Returns:
     --------
@@ -602,7 +608,7 @@ def calculate_contaminants(target_A, target_q, tolerance_percent=1.0, species_li
         - 'num_contaminants': number of contaminants found
     """
     contaminants, target_Aq = find_contaminants(
-        target_A, target_q, tolerance_percent, species_list, custom_charge_ranges
+        target_A, target_q, tolerance_percent, species_list, custom_charge_ranges, use_exact_mass
     )
     
     results = {
@@ -761,6 +767,9 @@ Examples:
 
   # Save results to text file
   python contaminant_calculator.py --target-A 238 --target-q 34 --output results.txt
+
+  # Use exact atomic mass instead of rounded mass number
+  python contaminant_calculator.py --target-A 238 --target-q 34 --use-exact-mass
         """
     )
     
@@ -778,6 +787,8 @@ Examples:
                        help='Save results to file. Use .csv extension for CSV format (recommended) or .txt for text format')
     parser.add_argument('--list-species', action='store_true',
                        help='List all available species and exit')
+    parser.add_argument('--use-exact-mass', action='store_true',
+                       help='Use exact atomic mass for calculation instead of rounded mass number')
     
     args = parser.parse_args()
     
@@ -809,7 +820,8 @@ Examples:
         args.target_q, 
         args.tolerance,
         species_list,
-        verbose=True
+        verbose=True,
+        use_exact_mass=args.use_exact_mass
     )
     
     # Save to file if requested

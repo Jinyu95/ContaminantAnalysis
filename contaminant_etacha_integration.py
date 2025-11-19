@@ -405,7 +405,8 @@ def get_element_symbol(Z):
 
 def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_material,
                                    tolerance_percent=1.0, species_list=None,
-                                   output_prefix="contaminant_analysis"):
+                                   output_prefix="contaminant_analysis",
+                                   use_exact_mass=False):
     """
     Complete workflow: Calculate contaminants, create ETACHA input, run ETACHA simulations, 
     and display results
@@ -426,6 +427,8 @@ def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_mater
         Species to check (default: Some pre-selected species)
     output_prefix : str
         Prefix for output files
+    use_exact_mass : bool
+        If True, use exact atomic mass. If False, use rounded mass number. (default: False)
     
     Returns:
     --------
@@ -437,7 +440,8 @@ def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_mater
         target_q=target_q,
         tolerance_percent=tolerance_percent,
         species_list=species_list,
-        verbose=True
+        verbose=True,
+        use_exact_mass=use_exact_mass
     )
     
     csv_file = f"{output_prefix}_list.csv"
@@ -467,9 +471,6 @@ def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_mater
     if etacha_results:
         print_charge_distribution_summary(etacha_results)
     
-    print("\n" + "="*80)
-    print("OUTPUT FILES:")
-    print("="*80)
     print(f"  • Contaminant list: {csv_file}")
     print(f"  • ETACHA input: {betacha_file}")
     if etacha_results:
@@ -481,10 +482,10 @@ def calculate_and_run_contaminants(target_A, target_q, beam_energy, target_mater
 if __name__ == "__main__":
     # Example: U-238 at q=34 through Li target
     lithium_target = {
-        'At': 6.94,     # Lithium
-        'Zt': 3,     # Z = 3 (Lithium)
-        'Thick': 1.0,  # mg/cm²
-        'd': 0.51    # density g/cm³
+        'At': 6.94,      # Lithium
+        'Zt': 3,         # Z = 3 (Lithium)
+        'Thick': 0.905,  # mg/cm²
+        'd': 0.51        # density g/cm³
     }
     
     contaminants, charge_results = calculate_and_run_contaminants(

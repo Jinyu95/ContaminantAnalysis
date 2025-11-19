@@ -1,7 +1,8 @@
-__pycache__
+__pycache__/
 
 etacha_cases/
 U238_fs1d_tracking_results/
+U238_analysis_tracking_results/
 Zn64_analysis_tracking_results/
 
 Flame_lattice_stripper2CSS.lat

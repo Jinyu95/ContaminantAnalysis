@@ -10,7 +10,6 @@ import os
 from beam_tracking import track_contaminants
 
 ## Calculate contaminants and run ETACHA4 to get charge state distributions
-# Lithium stripper
 lithium_target = {
       'At': 6.94,       # Lithium
       'Zt': 3,          # Z = 3 (Lithium)
@@ -18,9 +17,9 @@ lithium_target = {
       'd': 0.51         # density g/cm³
 }
 
-pre_fix = "Zn64_analysis"
+prefix = "Zn64_analysis"
 
-# This creates: `pre_fix_list.csv`,  `pre_fix_charge_distributions.csv`.
+# This creates: `prefix_list.csv`,  `prefix_charge_distributions.csv`.
 # The first file contains the calculated contaminants based on A/q difference.
 # The second file contains the charge state distributions calculated by ETACHA4.
 contaminants, results = calculate_and_run_contaminants(
@@ -28,7 +27,7 @@ contaminants, results = calculate_and_run_contaminants(
     target_q=19,         # Main beam charge state at dipole
     beam_energy=20.0,    # Energy in MeV/u at stripper
     target_material=lithium_target,
-    output_prefix=pre_fix
+    output_prefix=prefix
 )
 
 
@@ -36,6 +35,7 @@ contaminants, results = calculate_and_run_contaminants(
 # main beam at stripper
 main_A = 64  
 main_q = 28.5
+main_energy = 19.85  # MeV/u
 
 
 # import the lattice and aperture.
@@ -53,10 +53,10 @@ alpha_twiss_x = 0.0
 alpha_twiss_y = 0.0  
 
 
-csv_file = f"{pre_fix}_charge_distributions.csv" 
+csv_file = f"{prefix}_charge_distributions.csv" 
 
 # make dir
-output_dir = f"{pre_fix}_tracking_results"
+output_dir = f"{prefix}_tracking_results"
 os.makedirs(output_dir, exist_ok=True)
 output_prefix = os.path.join(output_dir, "tracking")
 
@@ -67,7 +67,6 @@ track_contaminants(csv_file,
                   main_q=main_q,
                   emit_x=emit_n_x,
                   emit_y=emit_n_y,
-                  normalized_emittance=True,  # Input is normalized emittance
                   beta_twiss_x=beta_twiss_x,
                   beta_twiss_y=beta_twiss_y,
                   alpha_twiss_x=alpha_twiss_x,
@@ -77,4 +76,4 @@ track_contaminants(csv_file,
                   y_offset=0.0,
                   s_plot_range_m=16.9,
                   plot_ylim_mm=50.0, 
-                  analyze_loss=True)  
+                  main_energy_MeV_u=main_energy)  

@@ -477,7 +477,7 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
                       alpha_twiss_x=0.0, alpha_twiss_y=0.0,
                       x_offset=0.0, y_offset=0.0, plot_envelope=True,
                       s_plot_range_m=1.0, plot_ylim_mm=None, analyze_loss=True,
-                      normalized_emittance=True):
+                      normalized_emittance=True, main_energy_MeV_u=None):
     """
     Track all beams from charge distribution CSV through lattice
     
@@ -519,6 +519,8 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
     normalized_emittance : bool
         If True, emit_x and emit_y are normalized rms emittances (ε_n = beta·gamma·ε_geometric)
         If False, emit_x and emit_y are geometric emittances
+    main_energy_MeV_u : float, optional
+        Kinetic energy of the main beam in MeV/u. If None, assumes main beam has same energy as contaminants.
     """
     # Read charge distributions calculated by ETACHA4
     df = pd.read_csv(csv_file)
@@ -556,7 +558,10 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
               f"{np.max(aperture_arr)*1000:.1f}] mm")
     
     print(f"Initial offset: x={x_offset*1000:.1f} mm, y={y_offset*1000:.1f} mm")
-    print(f"Main beam: A={main_A}, q={main_q}, A/q={main_A/main_q:.4f}")
+    if main_energy_MeV_u is not None:
+        print(f"Main beam: A={main_A}, q={main_q}, A/q={main_A/main_q:.4f}, E={main_energy_MeV_u} MeV/u")
+    else:
+        print(f"Main beam: A={main_A}, q={main_q}, A/q={main_A/main_q:.4f}, E=variable (from CSV)")
     
     results = []
     envelope_data = []
@@ -602,9 +607,15 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
         print(f"\n{species_name}: A={A}, Z={Z}, q_initial={q_initial}, E={E} MeV/u, Abundance={abundance:.4f}%")
         
         # Calculate reference Brho based on main beam settings
-        # The accelerator is tuned for main_A/main_q at energy E
+        # The accelerator is tuned for main_A/main_q at energy E (or main_energy_MeV_u if provided)
         m0_main = main_A * AMU_TO_EV
-        E_kinetic_main = E * main_A * 1e6  # eV
+        
+        if main_energy_MeV_u is not None:
+            E_main_u = main_energy_MeV_u
+        else:
+            E_main_u = E
+            
+        E_kinetic_main = E_main_u * main_A * 1e6  # eV
         E_total_main = E_kinetic_main + m0_main
         gamma_main = E_total_main / m0_main
         beta_main = np.sqrt(1.0 - 1.0/gamma_main**2)
@@ -673,11 +684,8 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
             
             z = np.zeros(n_particles)
             
-            # Set dp/p: main beam has 0, contaminants have relative difference
-            if is_main_beam:
-                dp = np.zeros(n_particles)
-            else:
-                dp = np.ones(n_particles) * dp_p
+            # Set dp/p
+            dp = np.ones(n_particles) * dp_p
             
             particles = np.column_stack([x, px, y, py, z, dp])
             
@@ -807,60 +815,6 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
     output_csv = f"{output_prefix}_results.csv"
     df_results.to_csv(output_csv, index=False)
     print(f"\nResults saved: {output_csv}")
-    
-    # Plot
-    # fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    
-    # # Max radius vs q
-    # ax = axes[0, 0]
-    # for species, grp in df_results.groupby('species'):
-    #     ax.plot(grp['q'], grp['max_r_mm'], 'o-', label=species)
-    # # Show aperture range if variable
-    # if isinstance(aperture, (int, float)):
-    #     ax.axhline(aperture*1000, color='r', linestyle='--', label='Aperture')
-    # else:
-    #     ax.axhline(np.min(aperture_arr)*1000, color='r', linestyle='--', 
-    #               label=f'Aperture min ({np.min(aperture_arr)*1000:.1f} mm)')
-    #     ax.axhline(np.max(aperture_arr)*1000, color='r', linestyle=':', 
-    #               label=f'Aperture max ({np.max(aperture_arr)*1000:.1f} mm)')
-    # ax.set_xlabel('Charge State q')
-    # ax.set_ylabel('Max Radius (mm)')
-    # ax.legend()
-    # ax.grid(True)
-    
-    # # Clearance vs q
-    # ax = axes[0, 1]
-    # for species, grp in df_results.groupby('species'):
-    #     ax.plot(grp['q'], grp['min_clearance_mm'], 'o-', label=species)
-    # ax.axhline(0, color='r', linestyle='--')
-    # ax.set_xlabel('Charge State q')
-    # ax.set_ylabel('Min Clearance (mm)')
-    # ax.legend()
-    # ax.grid(True)
-    
-    # # dp/p vs q
-    # ax = axes[1, 0]
-    # for species, grp in df_results.groupby('species'):
-    #     ax.plot(grp['q'], grp['dp_p'], 'o-', label=species)
-    # ax.axhline(0, color='k', linestyle='-', alpha=0.3)
-    # ax.set_xlabel('Charge State q')
-    # ax.set_ylabel('Δp/p')
-    # ax.legend()
-    # ax.grid(True)
-    
-    # # Fraction distribution
-    # ax = axes[1, 1]
-    # for species, grp in df_results.groupby('species'):
-    #     ax.bar(grp['q'], grp['charge_fraction_%'], alpha=0.6, label=species)
-    # ax.set_xlabel('Charge State q')
-    # ax.set_ylabel('Charge Fraction (%)')
-    # ax.legend()
-    # ax.grid(True)
-    
-    # plt.tight_layout()
-    # output_png = f"{output_prefix}_plot.png"
-    # plt.savefig(output_png, dpi=150)
-    # print(f"Plot saved: {output_png}")
     
     # Summary
     n_hit = df_results['hit_pipe'].sum()
@@ -1646,25 +1600,18 @@ def plot_all_species_envelope(envelope_data, aperture_arr, element_apertures, ou
 
 
 if __name__ == "__main__":
-    # Example usage with real FS1d lattice from FLAME
-    
-#     from build_fs1d_lattice import create_fs1d_lattice_from_flame
-    
-    # FLAME lattice file path
-#     flame_file = r"i:\departments\AcceleratorPhysics\FLAME\Lattice\FS1d-LS2-FS2_36Ar_v1.1.lat"
-    
     # Define main beam that accelerator is tuned for
     main_A = 238  
     main_q = 75
+    main_energy_MeV = 16.55  # MeV/u
     
-    # Create FS1d lattice from FLAME file (extracts beam parameters and apertures)
-#     lattice, aperture, brho, beam_info = create_fs1d_lattice_from_flame(flame_file, main_A, main_q)
+    # Create lattice
     import stripper2CSS_lattice
     lattice = stripper2CSS_lattice.create_stripper2CSS_lattice()
     
     print(f"  Lattice length: {lattice.total_length():.2f} m")
     
-    # Beam parameters - NORMALIZED RMS EMITTANCE
+    # Beam parameters
     emit_n_x = 0.15 * 1e-6  # m·rad (normalized rms emittance)
     emit_n_y = 0.15 * 1e-6  # m·rad (normalized rms emittance)
     beta_twiss_x = 0.2  # m
@@ -1677,9 +1624,8 @@ if __name__ == "__main__":
     print(f"  Beta functions: βx = {beta_twiss_x} m, βy = {beta_twiss_y} m")
     print(f"  Alphax = {alpha_twiss_x}, Alphay = {alpha_twiss_y}")
     
-    # Track contaminants through the FS1d lattice
-    # Note: Replace with your actual ETACHA charge distribution CSV file
-    csv_file = "U238_analysis_charge_distributions.csv"  # Or use appropriate file for Ar
+    # Track contaminants through the lattice
+    csv_file = "U238_analysis_charge_distributions.csv" 
 
     # make dir
     import os
@@ -1694,7 +1640,6 @@ if __name__ == "__main__":
                       main_q=main_q,
                       emit_x=emit_n_x,
                       emit_y=emit_n_y,
-                      normalized_emittance=True,  # Input is normalized emittance
                       beta_twiss_x=beta_twiss_x,
                       beta_twiss_y=beta_twiss_y,
                       alpha_twiss_x=alpha_twiss_x,
@@ -1703,5 +1648,5 @@ if __name__ == "__main__":
                       x_offset=0.0, 
                       y_offset=0.0,
                       s_plot_range_m=16.9,
-                      plot_ylim_mm=50.0,  # Set y-axis limits for plots
-                      analyze_loss=True)  # Enable detailed loss analysis
+                      plot_ylim_mm=50.0,  
+                      main_energy_MeV_u=main_energy_MeV)  

@@ -20,10 +20,10 @@ Beam tracking and beam loss analysis are then implemented with JuTrack (pyJuTrac
 
 ## Usage
 
-### See run_analysis.py. The first run of JuTrack will install all dependencies that takes a few minutes.
-### Don't forget to clean up the results folder `RESULTS_DIR` after running the code.
+See `run_analysis.py`. The first run of JuTrack will install all dependencies that takes a few minutes.
+Don't forget to clean up the results folder `RESULTS_DIR` after running the code.
 
-### Visualize Charge Distributions before and after stripper
+## Visualize Charge Distributions before and after stripper
 
 ```python
 from visualize_charge_distribution import plot_charge_distribution
