@@ -1,4 +1,4 @@
-# Contaminant Analysis + ETACHA4 + Beam Tracking
+# Contaminant Analysis for heavy ion accelerators
 This code calculates possible ion contaminants based on the A/q difference. 
 The charge state distribution of all contaminants after stripping is calculated with ETACHA4.
 Beam tracking and beam loss analysis are then implemented with JuTrack (pyJuTrack).
