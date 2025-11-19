@@ -1,0 +1,14 @@
+__pycache__
+
+etacha_cases/
+U238_fs1d_tracking_results/
+Zn64_analysis_tracking_results/
+
+Flame_lattice_stripper2CSS.lat
+u238_analysis_charge_distributions.csv
+u238_analysis_list.csv
+u238_analysis.betacha
+
+Zn64_analysis_charge_distributions.csv
+Zn64_analysis_list.csv
+Zn64_analysis.betacha
