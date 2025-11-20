@@ -10,7 +10,7 @@ import csv
 from pathlib import Path
 
 # Default species list to search for contaminants
-DEFAULT_SPECIES = ["H", "He", "C", "N", "O", "Ne", "Si", "Ar", "Ca", "Ni", "Zn", "Se", "Kr", "Ag", "Xe", "Tm", "W", "Pt", "Hg", "Bi", "U"]
+DEFAULT_SPECIES = ["H", "He", "C", "N", "O", "Ne", "Si", "Al", "Ar", "Ca", "Ni", "Zn", "Se", "Kr", "Ag", "Xe", "Tm", "W", "Pt", "Hg", "Bi", "U"]
 
 # Species database with isotopes: {mass_amu: abundance_%}
 # Only naturally occurring isotopes with measurable abundances are included

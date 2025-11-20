@@ -1629,9 +1629,9 @@ if __name__ == "__main__":
 
     # make dir
     import os
-    output_dir = "U238_fs1d_tracking_results"
+    output_dir = "U238_analysis_tracking_results"
     os.makedirs(output_dir, exist_ok=True)
-    output_prefix = os.path.join(output_dir, "U238_fs1d_tracking")
+    output_prefix = os.path.join(output_dir, "U238_analysis_tracking")
 
     track_contaminants(csv_file, 
                       lattice=lattice,
@@ -1648,5 +1648,5 @@ if __name__ == "__main__":
                       x_offset=0.0, 
                       y_offset=0.0,
                       s_plot_range_m=16.9,
-                      plot_ylim_mm=50.0,  
+                      plot_ylim_mm=80.0,  
                       main_energy_MeV_u=main_energy_MeV)  
