@@ -315,11 +315,14 @@ def analyze_particle_loss_from_tracking(particles_initial_xy, rout, lattice, ape
         
     Returns:
     --------
-    dict : Loss analysis results
+    dict : Loss analysis results including:
+        - alive_mask: Final boolean mask of surviving particles
+        - alive_masks_at_elements: List of boolean masks at each element exit
     """
     n_particles = particles_initial_xy.shape[0]
     
     alive_mask = np.ones(n_particles, dtype=bool)
+    alive_masks_at_elements = []  # Store alive mask after each element exit
     
     try:
         elements = lattice.line if hasattr(lattice, 'line') else list(lattice)
@@ -353,55 +356,8 @@ def analyze_particle_loss_from_tracking(particles_initial_xy, rout, lattice, ape
         else:
             aperture = aperture_arr[-1]
         
-        # Check particles at both element entrance and exit
+        # Check particles at element exit
         # rout[elem_idx] corresponds to position at element exit (after element elem_idx)
-        
-        # Check at entrance (use previous element's exit or initial coordinates)
-        if elem_idx == 0:
-            # First element: use initial coordinates
-            coords_entrance = np.column_stack([particles_entrance[:, 0], 
-                                               np.zeros(len(particles_entrance)),
-                                               np.zeros(len(particles_entrance)),
-                                               np.zeros(len(particles_entrance)),
-                                               np.zeros(len(particles_entrance)),
-                                               np.zeros(len(particles_entrance))])
-        elif elem_idx > 0 and (elem_idx - 1) < len(rout):
-            # Use previous element's exit as this element's entrance
-            coords_entrance = rout[elem_idx - 1]
-        else:
-            coords_entrance = None
-        
-        # Check entrance aperture
-        if coords_entrance is not None:
-            x_entrance = coords_entrance[alive_mask, 0]
-            y_entrance = coords_entrance[alive_mask, 2]
-            r_entrance = np.sqrt(x_entrance**2 + y_entrance**2)
-            
-            # Particles that exceed aperture at entrance
-            hit_aperture_entrance = r_entrance > aperture
-            n_lost_entrance = np.sum(hit_aperture_entrance)
-            
-            if n_lost_entrance > 0:
-                # Record loss at entrance
-                loss_info.append({
-                    'element_index': elem_idx,
-                    'element_type': elem_type,
-                    'element_name': elem_name + '_entrance',
-                    's_start': s_start,
-                    's_end': s_end,
-                    's_center': s_start,  # Entrance position
-                    'length': L,
-                    'aperture': aperture,
-                    'n_lost': n_lost_entrance,
-                    'loss_fraction': n_lost_entrance / n_particles
-                })
-                
-                # Update alive mask
-                alive_indices = np.where(alive_mask)[0]
-                lost_global_indices = alive_indices[hit_aperture_entrance]
-                alive_mask[lost_global_indices] = False
-        
-        # Check at exit
         if elem_idx < len(rout):
             coords_exit = rout[elem_idx]
             
@@ -420,7 +376,7 @@ def analyze_particle_loss_from_tracking(particles_initial_xy, rout, lattice, ape
                     loss_info.append({
                         'element_index': elem_idx,
                         'element_type': elem_type,
-                        'element_name': elem_name + '_exit',
+                        'element_name': elem_name,
                         's_start': s_start,
                         's_end': s_end,
                         's_center': s_end,  # Exit position
@@ -434,6 +390,10 @@ def analyze_particle_loss_from_tracking(particles_initial_xy, rout, lattice, ape
                     alive_indices = np.where(alive_mask)[0]
                     lost_global_indices = alive_indices[hit_aperture_exit]
                     alive_mask[lost_global_indices] = False
+            
+            # Store alive mask after this element exit (for envelope calculation)
+            # This mask reflects particles that survived through this element
+            alive_masks_at_elements.append(alive_mask.copy())
         
         current_s = s_end
     
@@ -447,7 +407,9 @@ def analyze_particle_loss_from_tracking(particles_initial_xy, rout, lattice, ape
         'n_initial': n_particles,
         'n_survived': n_survived,
         'transmission': transmission,
-        'loss_locations': loss_info
+        'loss_locations': loss_info,
+        'alive_mask': alive_mask,  # Final alive mask for all particles
+        'alive_masks_at_elements': alive_masks_at_elements  # Alive masks at each element exit
     }
 
 
@@ -709,7 +671,7 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
                     species_name, q, charge_frac
                 )
             
-            # Calculate initial envelope and centroid at s=0
+            # Calculate initial envelope and centroid at s=0 (all particles alive initially)
             x_initial = particles[:, 0]
             y_initial = particles[:, 2]
             x_rms_initial = np.std(x_initial)
@@ -728,16 +690,40 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
             clearance_arr = [clearance_initial]
             s_arr = [spos[0]]  # s=0
             
+            # Get alive masks at each element if loss analysis was performed
+            alive_masks = None
+            if loss_result and 'alive_masks_at_elements' in loss_result:
+                alive_masks = loss_result['alive_masks_at_elements']
+            
             # rout is a list of particle coordinates at each refpt
             # Calculate envelope and centroid at each position after initial
+            plot_stop = False
             for i, coords in enumerate(rout):
-                # Calculate RMS beam size (envelope) and centroid
-                x_arr = coords[:, 0]
-                y_arr = coords[:, 2]
+                # Filter to only alive particles if loss analysis was performed
+                if alive_masks is not None and i < len(alive_masks):
+                    if plot_stop:
+                        break  # Stop tracking envelope if all particles lost
+                    alive_mask = alive_masks[i]
+                    if np.sum(alive_mask) > 0:  # Ensure at least some particles survived
+                        x_arr = coords[alive_mask, 0]
+                        y_arr = coords[alive_mask, 2]
+                    else:
+                        # All particles lost - stop tracking envelope here
+                        if i > 0:
+                            x_arr = coords[alive_masks[i-1], 0]
+                            y_arr = coords[alive_masks[i-1], 2]
+                        else:
+                            x_arr = coords[:, 0]
+                            y_arr = coords[:, 2]
+                        plot_stop = True
+                else:
+                    # No loss analysis - use all particles
+                    x_arr = coords[:, 0]
+                    y_arr = coords[:, 2]
                 
-                # RMS values (standard deviation) and mean (centroid)
-                x_rms = np.std(x_arr)
-                y_rms = np.std(y_arr)
+                # RMS values (standard deviation) and mean (centroid) - only alive particles
+                x_rms = np.std(x_arr) if len(x_arr) > 1 else 0.0
+                y_rms = np.std(y_arr) if len(y_arr) > 1 else 0.0
                 x_mean = np.mean(x_arr)
                 y_mean = np.mean(y_arr)
                 r_rms = np.sqrt(x_rms**2 + y_rms**2)
