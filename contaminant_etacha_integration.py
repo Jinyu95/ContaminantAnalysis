@@ -273,16 +273,6 @@ def run_etacha_for_contaminants(betacha_file, contaminant_results,
         for r in results:
             w.writerow(r)
     
-    print(f"\n✓ Results saved to: {output_path}")
-    print(f"  Saved {len(charge_columns)} charge state columns")
-    print(f"  Note: Display below filters charge states with ratio < {min_ratio_percent}%")
-    
-    # Print summary of top charge states by combined ratio (filtered for display)
-    print(f"\nTop charge states by combined ratio (abundance × charge_fraction):")
-    print(f"  (Only showing states with combined ratio ≥ {min_ratio_percent}%)")
-    print(f"{'Isotope':<12} {'q_in':<6} {'q_out':<6} {'Abund%':<10} {'Charge%':<10} {'Ratio%':<10}")
-    print("-" * 70)
-    
     # Collect all charge state entries
     all_entries = []
     for r in results:

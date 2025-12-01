@@ -8,6 +8,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import pyJuTrack as jt
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message=".*tight_layout.*",
+    category=UserWarning,
+)
 
 # Constants
 C_LIGHT = 299792458.0  # m/s
@@ -433,13 +439,420 @@ def get_aperture_from_element(elem):
     return 0.5  # Default 50 cm
 
 
+def create_comprehensive_loss_table(results, spos, output_prefix):
+    """
+    Create a comprehensive table with all contaminants and their loss information at each position
+    
+    Parameters:
+    -----------
+    results : list of dict
+        Tracking results for each charge state
+    spos : array
+        s-positions of all elements in the lattice
+    output_prefix : str
+        Prefix for output files
+    """
+    # Collect all unique loss positions across all charge states
+    all_loss_positions = set()
+    for result in results:
+        if result.get('loss_analysis') and result['loss_analysis']['loss_locations']:
+            for loss_loc in result['loss_analysis']['loss_locations']:
+                all_loss_positions.add(loss_loc['s_center'])
+    
+    # Sort positions
+    sorted_positions = sorted(all_loss_positions)
+    
+    # Build the comprehensive table
+    table_data = []
+    
+    for result in results:
+        row = {
+            'species': result['species'],
+            'A': result['A'],
+            'Z': result['Z'],
+            'q': result['q'],
+            'abundance_%': result['abundance_%'],
+            'charge_fraction_%': result['charge_fraction_%'],
+            'combined_ratio_%': result['combined_ratio_%'],
+            'transmission_%': result['transmission'] * 100 if result['transmission'] is not None else 100.0,
+            'total_loss_%': (1 - result['transmission']) * 100 if result['transmission'] is not None else 0.0,
+        }
+        
+        # Add loss at each position
+        loss_data = result.get('loss_analysis')
+        if loss_data and loss_data['loss_locations']:
+            # Create a dictionary of s_position -> loss_percentage
+            loss_by_position = {}
+            for loss_loc in loss_data['loss_locations']:
+                s_pos = loss_loc['s_center']
+                loss_pct = loss_loc['loss_fraction'] * 100
+                loss_by_position[s_pos] = loss_pct
+            
+            # Fill in loss percentages for each position
+            for s_pos in sorted_positions:
+                # col_name = f'loss_at_s={s_pos:.3f}m_%'
+                col_name = f'{s_pos:.3f}'
+                row[col_name] = loss_by_position.get(s_pos, 0.0)
+        else:
+            # No losses - all positions are 0
+            for s_pos in sorted_positions:
+                # col_name = f'loss_at_s={s_pos:.3f}m_%'
+                col_name = f'{s_pos:.3f}'
+                row[col_name] = 0.0
+        
+        table_data.append(row)
+    
+    # Create DataFrame and save
+    df = pd.DataFrame(table_data)
+    
+    # Reorder columns: basic info first, then position-specific losses
+    basic_cols = ['species', 'A', 'Z', 'q', 'abundance_%', 'charge_fraction_%', 
+                  'combined_ratio_%', 'transmission_%', 'total_loss_%']
+    # loss_cols = [col for col in df.columns if col.startswith('loss_at_s=')]
+    loss_cols = [c for c in df.columns if c not in basic_cols]
+    df = df[basic_cols + loss_cols]
+    
+    # Save to CSV
+    output_csv = f"{output_prefix}_loss_table.csv"
+    df.to_csv(output_csv, index=False)
+    print(f"\nLoss table saved: {output_csv}")
+    return df
+
+
+def calculate_power_deposition(results, total_beam_power_W, output_prefix):
+    """
+    Calculate power deposition at each loss location along the beamline
+    
+    Parameters:
+    -----------
+    results : list of dict
+        Tracking results for each charge state
+    total_beam_power_W : float
+        Total beam power in Watts (all species and charge states combined)
+    output_prefix : str
+        Prefix for output files
+        
+    Returns:
+    --------
+    DataFrame : Power deposition table with columns [s_position_m, power_W, cumulative_power_W]
+    """
+    # Collect all loss events with their weighted contributions
+    loss_events = []
+    
+    for result in results:
+        combined_ratio = result['combined_ratio_%'] / 100.0  # Convert to fraction
+        loss_data = result.get('loss_analysis')
+        
+        if loss_data and loss_data['loss_locations']:
+            for loss_loc in loss_data['loss_locations']:
+                s_pos = loss_loc['s_center']
+                loss_fraction = loss_loc['loss_fraction']  # Fraction of particles lost at this location
+                
+                # Power deposited = total_beam_power × combined_ratio × loss_fraction
+                power_deposited = total_beam_power_W * combined_ratio * loss_fraction
+                
+                loss_events.append({
+                    's_position_m': s_pos,
+                    'power_W': power_deposited,
+                    'species': result['species'],
+                    'q': result['q'],
+                    'combined_ratio_%': result['combined_ratio_%'],
+                    'charge_fraction_%': result['charge_fraction_%'],
+                    'loss_fraction_%': loss_fraction * 100
+                })
+    
+    if not loss_events:
+        print("\nNo power deposition (no losses detected)")
+        return None
+    
+    # Create DataFrame and aggregate by position
+    df_events = pd.DataFrame(loss_events)
+    
+    # Aggregate power by position
+    df_power = df_events.groupby('s_position_m').agg({
+        'power_W': 'sum'
+    }).reset_index()
+    
+    # Sort by position
+    df_power = df_power.sort_values('s_position_m')
+    
+    # Calculate cumulative power
+    df_power['cumulative_power_W'] = df_power['power_W'].cumsum()
+    
+    # Add percentage columns
+    total_lost_power = df_power['power_W'].sum()
+    df_power['power_fraction_%'] = (df_power['power_W'] / total_beam_power_W) * 100
+    df_power['cumulative_fraction_%'] = (df_power['cumulative_power_W'] / total_beam_power_W) * 100
+    
+    # Save detailed events table
+    df_events_sorted = df_events.sort_values('s_position_m')
+    events_csv = f"{output_prefix}_power_deposition_detailed.csv"
+    df_events_sorted.to_csv(events_csv, index=False)
+    print(f"\nDetailed power deposition saved: {events_csv}")
+    
+    # Save aggregated power table
+    power_csv = f"{output_prefix}_power_deposition.csv"
+    df_power.to_csv(power_csv, index=False)
+    print(f"Aggregated power deposition saved: {power_csv}")
+    
+    # Print summary
+    print("\n" + "="*60)
+    print("POWER DEPOSITION SUMMARY")
+    print("="*60)
+    print(f"Total beam power: {total_beam_power_W:.2f} W")
+    print(f"Total power lost: {total_lost_power:.2f} W ({total_lost_power/total_beam_power_W*100:.2f}%)")
+    print(f"\nTop 5 power deposition locations:")
+    top5 = df_power.nlargest(5, 'power_W')
+    for idx, row in top5.iterrows():
+        print(f"  s = {row['s_position_m']:.3f} m: {row['power_W']:.3f} W ({row['power_fraction_%']:.2f}%)")
+    
+    return df_power, df_events
+
+
+def plot_power_deposition(df_power, df_events, lattice, output_prefix, element_apertures=None, plot_per_species=False):
+    """
+    Plot power deposition along the beamline with lattice layout
+    
+    Parameters:
+    -----------
+    df_power : DataFrame
+        Aggregated power deposition table with columns [s_position_m, power_W, cumulative_power_W, ...]
+    df_events : DataFrame
+        Detailed power deposition events for each species/charge state
+    lattice : jt.Lattice
+        Lattice object for plotting layout
+    output_prefix : str
+        Prefix for output files
+    element_apertures : list of dict, optional
+        List of element apertures with keys: 's_start', 's_end', 'aperture'
+    plot_per_species : bool, optional
+        Whether to plot individual power deposition for each species. Default: False
+    """
+    if df_power is None or len(df_power) == 0:
+        print("No power deposition data to plot")
+        return
+    
+    # Get all unique species names for the title
+    all_species = sorted(df_events['species'].unique())
+    species_title = ', '.join(all_species)
+    # split title every 12 species for readability
+    if len(all_species) > 12:
+        species_title = ''
+        for i in range(0, len(all_species), 12):
+            species_title += ', '.join(all_species[i:i+12]) + '\n'
+        species_title = species_title.strip()
+    
+    # Plot 1: Total power deposition (all species combined)
+    fig, axes = plt.subplots(2, 1, figsize=(14, 6), 
+                            gridspec_kw={'height_ratios': [4, 0.8], 'hspace': 0.15})
+    ax_power = axes[0]
+    ax_lattice = axes[1]
+    
+    s_positions = df_power['s_position_m'].values
+    power_W = df_power['power_W'].values
+    
+    # Calculate percentage of total lost power (not input beam power)
+    total_lost_power = power_W.sum()
+    power_pct = (power_W / total_lost_power) * 100
+    
+    # Create bar chart with appropriate width
+    bar_width = 0.05  # 5 cm width for bars
+    bars = ax_power.bar(s_positions, power_pct, width=bar_width, 
+                       color='red', alpha=0.7, edgecolor='darkred', linewidth=1.5)
+    
+    ax_power.set_ylabel('Power Deposited (%)', fontsize=13)
+    ax_power.set_title(f'{species_title} (Assume the same power for all isotopes)', fontsize=14)
+    ax_power.grid(True, alpha=0.3, axis='y')
+    
+    # Plot aperture on secondary y-axis with shadow style (matching envelope plots)
+    if element_apertures:
+        ax_aperture = ax_power.twinx()
+        
+        # Determine aperture range for y-axis limits
+        aperture_values = [elem['aperture'] * 1000.0 for elem in element_apertures]
+        min_aperture_mm = min(aperture_values)
+        max_aperture_mm = max(aperture_values)
+        aperture_range = max_aperture_mm - min_aperture_mm
+        
+        # Set y-limits with some margin
+        if aperture_range < 1:  # Constant or nearly constant aperture
+            y_margin = max_aperture_mm * 0.2
+        else:
+            y_margin = aperture_range * 0.1
+        
+        y_lim_max = max_aperture_mm + y_margin
+        
+        # Draw aperture shadow and boundaries for each element
+        for elem_ap in element_apertures:
+            s_start = elem_ap['s_start']
+            s_end = elem_ap['s_end']
+            ap_mm = elem_ap['aperture'] * 1000.0
+            
+            # Shadow above aperture (represents blocked region)
+            ax_aperture.fill_between(
+                [s_start, s_end],
+                ap_mm, y_lim_max,
+                color='0.3',
+                alpha=0.5,
+                edgecolor=None,
+                linewidth=0,
+                zorder=1
+            )
+            
+            # Draw aperture boundary line
+            ax_aperture.plot([s_start, s_end], [ap_mm, ap_mm], 
+                           color='black', linewidth=2.5, zorder=10, alpha=1.0, solid_capstyle='butt')
+        
+        ax_aperture.set_ylabel('Aperture (mm)', fontsize=13, fontweight='bold')
+        ax_aperture.set_ylim(0, y_lim_max)
+        ax_aperture.grid(False)
+    
+    # Add value labels on top of bars for significant power depositions
+    max_power_pct = max(power_pct)
+    for i, (s, p) in enumerate(zip(s_positions, power_pct)):
+        if p > max_power_pct * 0.1:  # Label bars with >10% of max power
+            ax_power.text(s, p, f'{p:.2f}%', 
+                         ha='center', va='bottom', fontsize=9, fontweight='bold')
+    
+    # Set x-axis limits to match lattice
+    if lattice:
+        total_length = lattice.total_length()
+        ax_power.set_xlim(0, total_length)
+    
+    # Remove x-axis labels from top plot (they'll be on the lattice plot)
+    ax_power.set_xticklabels([])
+    
+    # Plot lattice layout
+    if lattice:
+        plot_lattice_layout(ax_lattice, lattice, width=0.25)
+        ax_lattice.set_xlabel('s (m)', fontsize=13, fontweight='bold')
+    
+    plt.tight_layout()
+    output_file = f"{output_prefix}_power_deposition_total.png"
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    print(f"Total power deposition plot saved: {output_file}")
+    plt.close(fig)
+    
+    # Plot 2: Power deposition for each isotope (all charge states combined in one plot)
+    # Only generate if plot_per_species is True
+    if not plot_per_species:
+        return
+    
+    # Group by species (isotope) only
+    species_groups = df_events.groupby('species')
+    
+    for species, species_data in species_groups:
+        fig, axes = plt.subplots(2, 1, figsize=(14, 6), 
+                                gridspec_kw={'height_ratios': [4, 0.8], 'hspace': 0.15})
+        ax_power = axes[0]
+        ax_lattice = axes[1]
+        
+        # Get all charge states for this species
+        charge_states = sorted(species_data['q'].unique())
+        charge_states_str = ', '.join([f'{int(q)}+' for q in charge_states])
+        
+        # Aggregate power by position (sum all charge states at same location)
+        species_aggregated = species_data.groupby('s_position_m').agg({
+            'power_W': 'sum'
+        }).reset_index()
+        
+        # Calculate percentage of total lost power for this species
+        total_species_power = species_aggregated['power_W'].sum()
+        species_aggregated['power_pct'] = (species_aggregated['power_W'] / total_species_power) * 100
+        
+        s_positions = species_aggregated['s_position_m'].values
+        power_pct = species_aggregated['power_pct'].values
+        
+        # Collect all positions for this species to determine max power for labeling
+        max_power_pct = max(power_pct) if len(power_pct) > 0 else 0
+        
+        # Create bar chart (single bar per location, aggregating all charge states)
+        bars = ax_power.bar(s_positions, power_pct, width=bar_width, 
+                           color='orange', alpha=0.7, edgecolor='darkorange', linewidth=1.5)
+        
+        # Add value labels on top of bars for significant power depositions
+        for i, (s, p) in enumerate(zip(s_positions, power_pct)):
+            if p > max_power_pct * 0.1:  # Label bars with >10% of max power
+                ax_power.text(s, p, f'{p:.2f}%', 
+                             ha='center', va='bottom', fontsize=9, fontweight='bold')
+        
+        ax_power.set_ylabel('Power Deposited (%)', fontsize=13)
+        # ax_power.set_title(f'{species} ({charge_states_str})', fontsize=14, fontweight='bold')
+        ax_power.grid(True, alpha=0.3, axis='y')
+        
+        # Plot aperture on secondary y-axis with shadow style (matching envelope plots)
+        if element_apertures:
+            ax_aperture = ax_power.twinx()
+            
+            # Determine aperture range for y-axis limits
+            aperture_values = [elem['aperture'] * 1000.0 for elem in element_apertures]
+            min_aperture_mm = min(aperture_values)
+            max_aperture_mm = max(aperture_values)
+            aperture_range = max_aperture_mm - min_aperture_mm
+            
+            # Set y-limits with some margin
+            if aperture_range < 1:  # Constant or nearly constant aperture
+                y_margin = max_aperture_mm * 0.2
+            else:
+                y_margin = aperture_range * 0.1
+            
+            y_lim_max = max_aperture_mm + y_margin
+            
+            # Draw aperture shadow and boundaries for each element
+            for elem_ap in element_apertures:
+                s_start = elem_ap['s_start']
+                s_end = elem_ap['s_end']
+                ap_mm = elem_ap['aperture'] * 1000.0
+                
+                # Shadow above aperture (represents blocked region)
+                ax_aperture.fill_between(
+                    [s_start, s_end],
+                    ap_mm, y_lim_max,
+                    color='0.3',
+                    alpha=0.5,
+                    edgecolor=None,
+                    linewidth=0,
+                    zorder=1
+                )
+                
+                # Draw aperture boundary line
+                ax_aperture.plot([s_start, s_end], [ap_mm, ap_mm], 
+                               color='black', linewidth=2.5, zorder=10, alpha=1.0, solid_capstyle='butt')
+            
+            ax_aperture.set_ylabel('Aperture (mm)', fontsize=13, fontweight='bold')
+            ax_aperture.set_ylim(0, y_lim_max)
+            ax_aperture.grid(False)
+        
+        # Set x-axis limits to match lattice
+        if lattice:
+            total_length = lattice.total_length()
+            ax_power.set_xlim(0, total_length)
+        
+        # Remove x-axis labels from top plot
+        ax_power.set_xticklabels([])
+        
+        # Plot lattice layout
+        if lattice:
+            plot_lattice_layout(ax_lattice, lattice, width=0.25)
+            ax_lattice.set_xlabel('s (m)', fontsize=13, fontweight='bold')
+        
+        plt.tight_layout()
+        # Clean species name for filename
+        species_clean = species.replace('-', '').replace('+', '')
+        output_file = f"{output_prefix}_power_deposition_{species_clean}.png"
+        plt.savefig(output_file, dpi=150, bbox_inches='tight')
+        print(f"Power deposition plot saved: {output_file}")
+        plt.close(fig)
+
+
 def track_contaminants(csv_file, lattice, aperture, main_A, main_q, 
                       output_prefix="tracking", emit_x=1e-6, emit_y=1e-6,
                       beta_twiss_x=10.0, beta_twiss_y=10.0,
                       alpha_twiss_x=0.0, alpha_twiss_y=0.0,
                       x_offset=0.0, y_offset=0.0, plot_envelope=True,
                       s_plot_range_m=1.0, plot_ylim_mm=None, analyze_loss=True,
-                      normalized_emittance=True, main_energy_MeV_u=None):
+                      normalized_emittance=True, main_energy_MeV_u=None,
+                      force_track_species=None, total_beam_power_W=None):
     """
     Track all beams from charge distribution CSV through lattice
     
@@ -483,6 +896,13 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
         If False, emit_x and emit_y are geometric emittances
     main_energy_MeV_u : float, optional
         Kinetic energy of the main beam in MeV/u. If None, assumes main beam has same energy as contaminants.
+    force_track_species : list of tuples, optional
+        List of (Z, A) or (Z, A, q) tuples to force tracking regardless of combined ratio threshold.
+        - (Z, A): Force track all charge states of this isotope
+        - (Z, A, q): Force track only specific charge state
+        Example: [(92, 238), (74, 184, 62)] to force track all U-238 charge states and W-184 q=62.
+    total_beam_power_W : float, optional
+        Total beam power in Watts. If provided, calculates power deposition at each loss location.
     """
     # Read charge distributions calculated by ETACHA4
     df = pd.read_csv(csv_file)
@@ -557,8 +977,28 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
                     # Fallback: calculate it manually if ratio column doesn't exist
                     combined_ratio = abundance * charge_frac / 100.0 if pd.notna(charge_frac) else 0
                 
-                # Filter: only track if combined ratio >= 1%
-                if pd.notna(charge_frac) and charge_frac > 0 and combined_ratio >= 1.0:
+                # Check if this species should be force-tracked
+                force_track = False
+                if force_track_species is not None:
+                    for force_spec in force_track_species:
+                        # Handle both (Z, A) and (Z, A, q) formats
+                        if len(force_spec) == 2:
+                            force_Z, force_A = force_spec
+                            # Match Z and A only (any charge state)
+                            if Z == force_Z and A == force_A:
+                                force_track = True
+                                print(f"  Forcing tracking of {get_species_name(A, Z)} all charge states")
+                                break
+                        elif len(force_spec) == 3:
+                            force_Z, force_A, force_q = force_spec
+                            # Match Z, A, and specific q
+                            if Z == force_Z and A == force_A and q == force_q:
+                                force_track = True
+                                print(f"  Forcing tracking of {get_species_name(A, Z)} q={q}")
+                                break
+                
+                # Filter: track if combined ratio >= 1% OR if force-tracked
+                if pd.notna(charge_frac) and charge_frac > 0 and (combined_ratio >= 1.0 or force_track):
                     charge_states[q] = (float(charge_frac), combined_ratio)
         
         if not charge_states:
@@ -808,10 +1248,6 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
     
     # Generate loss analysis report and plots if requested
     if analyze_loss:
-        print("\n" + "="*60)
-        print("PARTICLE LOSS ANALYSIS")
-        print("="*60)
-        
         # Collect all loss data
         loss_summary = []
         all_loss_locations = []
@@ -870,6 +1306,51 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
             
             # Create loss visualization
             # plot_loss_analysis(all_loss_locations, loss_summary, lattice, output_prefix)
+        
+        # Create comprehensive loss table with loss at each position
+        create_comprehensive_loss_table(results, spos, output_prefix)
+        
+        # Calculate power deposition if total beam power is provided
+        if total_beam_power_W is not None:
+            df_power, df_events = calculate_power_deposition(results, total_beam_power_W, output_prefix)
+            # Plot power deposition (total and per species)
+            if df_power is not None and df_events is not None:
+                # Extract element apertures for plotting
+                element_apertures = []
+                if lattice is not None:
+                    try:
+                        elements = lattice.line if hasattr(lattice, 'line') else list(lattice)
+                    except:
+                        elements = []
+                    
+                    current_s = 0.0
+                    for elem in elements:
+                        if hasattr(elem, 'length'):
+                            L = elem.length
+                        elif hasattr(elem, 'len'):
+                            L = elem.len
+                        else:
+                            L = 0.0
+
+                        # Skip zero-length elements
+                        if L == 0.0:
+                            continue
+
+                        s_start = current_s
+                        s_end = current_s + L
+                        
+                        # Get aperture from element's RApertures (first value)
+                        elem_aperture = get_aperture_from_element(elem)
+                        
+                        element_apertures.append({
+                            's_start': s_start,
+                            's_end': s_end,
+                            'aperture': elem_aperture
+                        })
+                        
+                        current_s = s_end
+                
+                plot_power_deposition(df_power, df_events, lattice, output_prefix, element_apertures)
     
     # Plot envelope evolution along lattice
     if plot_envelope and envelope_data:
@@ -908,8 +1389,14 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
                 
                 current_s = s_end
         
+        # Get power deposition data if available (from earlier in the function)
+        df_events_for_envelope = None
+        if total_beam_power_W is not None and 'df_events' in locals():
+            df_events_for_envelope = df_events
+        
         plot_envelope_evolution(envelope_data, aperture_arr, element_apertures, output_prefix, 
-                                lattice=lattice, s_plot_range_m=s_plot_range_m, plot_ylim_mm=plot_ylim_mm)
+                                lattice=lattice, s_plot_range_m=s_plot_range_m, plot_ylim_mm=plot_ylim_mm,
+                                df_events=df_events_for_envelope)
         plot_all_species_envelope(envelope_data, aperture_arr, element_apertures, output_prefix, 
                                   lattice=lattice, s_plot_range_m=s_plot_range_m, plot_ylim_mm=plot_ylim_mm)
     
@@ -917,7 +1404,7 @@ def track_contaminants(csv_file, lattice, aperture, main_A, main_q,
 
 
 def plot_envelope_evolution(envelope_data, aperture_arr, element_apertures, output_prefix, 
-                           lattice=None, s_plot_range_m=1.0, plot_ylim_mm=None):
+                           lattice=None, s_plot_range_m=1.0, plot_ylim_mm=None, df_events=None):
     """
     Plot beam envelope evolution along the lattice
     
@@ -937,6 +1424,8 @@ def plot_envelope_evolution(envelope_data, aperture_arr, element_apertures, outp
         Range of s to plot (meters). If None, uses full data range without setting xlim.
     plot_ylim_mm : float, optional
         Y-axis limit for envelope plots in mm. If None, uses adaptive limits based on data.
+    df_events : DataFrame, optional
+        Detailed power deposition events (species, q, s_position_m, power_W). If None, plots particle loss instead.
     """
     # Find the main beam data (to plot on all species plots)
     main_beam_data = None
@@ -1217,69 +1706,131 @@ def plot_envelope_evolution(envelope_data, aperture_arr, element_apertures, outp
             ax.set_xlim([0, s_plot_range_m])
         ax.set_ylim([-y_plot_lim, y_plot_lim])
         
-        # Plot cumulative particle loss for each charge state
+        # Plot power deposition or particle loss in third panel
         ax = ax_loss
-        for idx, data in enumerate(charge_states):
-            q = data['q']
-            combined_ratio = data['combined_ratio']
-            loss_result = data.get('loss_result')
-            transmission = loss_result['transmission'] if loss_result else 1.0
-            # Use same color as envelope plots
-            is_main = data['is_main']
-            if is_main:
-                color = 'black'
-            else:
-                color = plt.cm.tab10(idx % 10)
+        
+        if df_events is not None:
+            # Filter power deposition data for this species only
+            species_power = df_events[df_events['species'] == species]
             
-            if loss_result and loss_result['loss_locations']:
-                # Build cumulative loss curve from loss_locations
-                loss_locations = loss_result['loss_locations']
-                n_initial = loss_result['n_initial']
+            if len(species_power) > 0:
+                # Calculate total charge fraction for this species (sum of all charge states)
+                # This represents the fraction distribution among charge states (should sum to ~100%)
+                # Need to get unique charge states to avoid counting duplicates
+                species_charge_states = species_power.groupby('q')['charge_fraction_%'].first()
+                total_species_charge_fraction = species_charge_states.sum()
                 
-                # Sort loss locations by s position (use s_center for plotting)
-                loss_s = [loc['s_center'] for loc in loss_locations]
-                loss_counts = [loc['n_lost'] for loc in loss_locations]
+                # Aggregate power by position (sum all charge states at same location)
+                species_aggregated = species_power.groupby('s_position_m').agg({
+                    'power_W': 'sum'
+                }).reset_index()
                 
-                # Create cumulative loss array
-                if loss_s:
-                    # Combine s positions and losses
-                    s_loss_pairs = sorted(zip(loss_s, loss_counts))
-                    s_sorted = [0] + [s for s, _ in s_loss_pairs]
-                    cumulative_loss_pct = [0]
-                    total_lost = 0
+                s_positions = species_aggregated['s_position_m'].values
+                power_W = species_aggregated['power_W'].values
+                
+                # Calculate percentage relative to total species power
+                # For a single isotope, we only care about charge state fractions, not natural abundance
+                # power_W = total_beam_power × combined_ratio × loss_fraction
+                # But combined_ratio = abundance × charge_fraction
+                # So power_W = total_beam_power × abundance × charge_fraction × loss_fraction
+                
+                # Get the first row to extract parameters
+                first_row = species_power.iloc[0]
+                
+                # Back-calculate: species_beam_power = total_beam_power × abundance
+                # power_W / (charge_fraction × loss_fraction) gives us species_beam_power
+                species_beam_power_W = first_row['power_W'] / (
+                    first_row['charge_fraction_%'] / 100.0 * first_row['loss_fraction_%'] / 100.0
+                )
+                
+                # Percentage relative to species total power (if all charge states fully lost)
+                power_pct = (power_W / species_beam_power_W) * 100
+                
+                # Create bar chart
+                bar_width = 0.05  # 5 cm width for bars
+                bars = ax.bar(s_positions, power_pct, width=bar_width, 
+                             color='red', alpha=0.7, edgecolor='darkred', linewidth=1.5)
+                
+                ax.set_ylabel('Power Deposited (%)', fontsize=13)
+                ax.grid(True, alpha=0.3, axis='y')
+                
+                # Add value labels on top of bars for significant power depositions
+                max_power_pct = max(power_pct) if len(power_pct) > 0 else 0
+                for i, (s, p) in enumerate(zip(s_positions, power_pct)):
+                    if p > max_power_pct * 0.1:  # Label bars with >10% of max power
+                        ax.text(s, p, f'{p:.1f}%', 
+                               ha='center', va='bottom', fontsize=9, fontweight='bold')
+            else:
+                # No power data for this species, fall back to particle loss
+                df_events = None
+        
+        if df_events is None:
+            # Plot cumulative particle loss for each charge state (original behavior)
+            for idx, data in enumerate(charge_states):
+                q = data['q']
+                combined_ratio = data['combined_ratio']
+                loss_result = data.get('loss_result')
+                transmission = loss_result['transmission'] if loss_result else 1.0
+                # Use same color as envelope plots
+                is_main = data['is_main']
+                if is_main:
+                    color = 'black'
+                else:
+                    color = plt.cm.tab10(idx % 10)
+                
+                if loss_result and loss_result['loss_locations']:
+                    # Build cumulative loss curve from loss_locations
+                    loss_locations = loss_result['loss_locations']
+                    n_initial = loss_result['n_initial']
                     
-                    for s, count in s_loss_pairs:
-                        total_lost += count
-                        cumulative_loss_pct.append(total_lost / n_initial * 100)
+                    # Sort loss locations by s position (use s_center for plotting)
+                    loss_s = [loc['s_center'] for loc in loss_locations]
+                    loss_counts = [loc['n_lost'] for loc in loss_locations]
                     
-                    # Extend line to end of beamline (last tracked position)
-                    s_max = np.max(s_arr)
-                    if s_sorted[-1] < s_max:
-                        s_sorted.append(s_max)
-                        cumulative_loss_pct.append(cumulative_loss_pct[-1])  # Maintain final loss value
-                    
-                    # Plot cumulative loss as step function
-                    label = f"{species}{q}+, transmission:{transmission*100:.2f}%"
-                    ax.plot(s_sorted, cumulative_loss_pct, '-', color=color, 
-                           label=label, linewidth=2.5, drawstyle='steps-post')
+                    # Create cumulative loss array
+                    if loss_s:
+                        # Combine s positions and losses
+                        s_loss_pairs = sorted(zip(loss_s, loss_counts))
+                        s_sorted = [0] + [s for s, _ in s_loss_pairs]
+                        cumulative_loss_pct = [0]
+                        total_lost = 0
+                        
+                        for s, count in s_loss_pairs:
+                            total_lost += count
+                            cumulative_loss_pct.append(total_lost / n_initial * 100)
+                        
+                        # Extend line to end of beamline (last tracked position)
+                        s_max = np.max(s_arr)
+                        if s_sorted[-1] < s_max:
+                            s_sorted.append(s_max)
+                            cumulative_loss_pct.append(cumulative_loss_pct[-1])  # Maintain final loss value
+                        
+                        # Plot cumulative loss as step function
+                        label = f"{species}{q}+, transmission:{transmission*100:.2f}%"
+                        ax.plot(s_sorted, cumulative_loss_pct, '-', color=color, 
+                               label=label, linewidth=2.5, drawstyle='steps-post')
+                    else:
+                        # No losses - plot flat line at 0
+                        label = f"{species}{q}+, transmission:{transmission*100:.2f}%"
+                        ax.plot([0, s_plot_range_m if s_plot_range_m else np.max(s_arr)], [0, 0], '-', color=color, 
+                               label=label, linewidth=2, alpha=0.5)
                 else:
                     # No losses - plot flat line at 0
                     label = f"{species}{q}+, transmission:{transmission*100:.2f}%"
-                    ax.plot([0, s_plot_range_m if s_plot_range_m else np.max(s_arr)], [0, 0], '-', color=color, 
+                    ax.plot([0, s_plot_range_m if s_plot_range_m else np.max(s_arr)], [0, 0], '-', color=color,
                            label=label, linewidth=2, alpha=0.5)
-            else:
-                # No losses - plot flat line at 0
-                label = f"{species}{q}+, transmission:{transmission*100:.2f}%"
-                ax.plot([0, s_plot_range_m if s_plot_range_m else np.max(s_arr)], [0, 0], '-', color=color,
-                       label=label, linewidth=2, alpha=0.5)
+            
+            # ax.set_xlabel('s (m)', fontsize=13)
+            ax.set_ylabel('Cumulative Loss (%)', fontsize=13)
+            if s_plot_range_m is not None:
+                ax.set_xlim([0, s_plot_range_m])
+            ax.set_ylim([0, 105])
+            ax.grid(True, alpha=0.3)
+            ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1.01), fontsize=11, framealpha=0.9)
         
-        # ax.set_xlabel('s (m)', fontsize=13)
-        ax.set_ylabel('Cumulative Loss (%)', fontsize=13)
+        # Set x-axis limits for third panel
         if s_plot_range_m is not None:
             ax.set_xlim([0, s_plot_range_m])
-        ax.set_ylim([0, 105])
-        ax.grid(True, alpha=0.3)
-        ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1.01), fontsize=11, framealpha=0.9)
         
         # Plot lattice layout if provided (at the bottom)
         if lattice:
@@ -1322,17 +1873,20 @@ def plot_all_species_envelope(envelope_data, aperture_arr, element_apertures, ou
     import matplotlib.cm as cm
     from itertools import cycle
     
-    # Create figure with 3 rows if lattice provided, else 2 rows
+    # Create figure with legend panel at top, then X/Y plots, and optionally lattice
     if lattice:
-        fig, axes = plt.subplots(3, 1, figsize=(13, 7), 
-                                gridspec_kw={'height_ratios': [4, 4, 0.8], 'hspace': 0.3})
-        ax_x = axes[0]
-        ax_y = axes[1]
-        ax_lattice = axes[2]
+        fig, axes = plt.subplots(4, 1, figsize=(13, 8), 
+                                gridspec_kw={'height_ratios': [0.6, 4, 4, 0.8], 'hspace': 0.35})
+        ax_legend = axes[0]
+        ax_x = axes[1]
+        ax_y = axes[2]
+        ax_lattice = axes[3]
     else:
-        fig, axes = plt.subplots(2, 1, figsize=(13, 5))
-        ax_x = axes[0]
-        ax_y = axes[1]
+        fig, axes = plt.subplots(3, 1, figsize=(13, 6.5),
+                                gridspec_kw={'height_ratios': [0.6, 4, 4], 'hspace': 0.35})
+        ax_legend = axes[0]
+        ax_x = axes[1]
+        ax_y = axes[2]
     
     # Get aperture array from first charge state
     s_arr = np.array(envelope_data[0]['s'])
@@ -1473,14 +2027,19 @@ def plot_all_species_envelope(envelope_data, aperture_arr, element_apertures, ou
     # ax.set_xlabel('s (m)', fontsize=13)
     ax.set_ylabel('X (mm)', fontsize=13)
     
-    # Smart legend placement: keep legend compact and above plot to avoid covering data
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.20), fontsize=9,
-              ncol=min(6, len(ax.get_legend_handles_labels()[0])), framealpha=0.9)
-    
     ax.grid(True, alpha=0.3)
     if s_plot_range_m is not None:
         ax.set_xlim([0, s_plot_range_m])
     ax.set_ylim([-x_plot_lim, x_plot_lim])
+    
+    # Create dedicated legend panel at the top
+    # Collect all legend entries from ax_x
+    handles, labels = ax_x.get_legend_handles_labels()
+    ax_legend.axis('off')  # Hide axes
+    if handles:
+        ax_legend.legend(handles, labels, loc='center', fontsize=9,
+                        ncol=min(8, max(4, len(handles))), framealpha=0.9, 
+                        handlelength=2, columnspacing=1.5)
     
     # Reset for Y plot
     species_in_legend = set()
@@ -1563,8 +2122,6 @@ def plot_all_species_envelope(envelope_data, aperture_arr, element_apertures, ou
     
     # ax.set_xlabel('s (m)', fontsize=13)
     ax.set_ylabel('Y (mm)', fontsize=13)
-    # ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.20), fontsize=9,
-    #           ncol=min(6, len(ax.get_legend_handles_labels()[0])), framealpha=0.9)
     ax.grid(True, alpha=0.3)
     if s_plot_range_m is not None:
         ax.set_xlim([0, s_plot_range_m])
@@ -1618,6 +2175,9 @@ if __name__ == "__main__":
     output_dir = "U238_analysis_tracking_results"
     os.makedirs(output_dir, exist_ok=True)
     output_prefix = os.path.join(output_dir, "U238_analysis_tracking")
+    
+    # Beam power (example: 1 kW total beam power)
+    total_beam_power_W = 1e3  # 1 kW
 
     track_contaminants(csv_file, 
                       lattice=lattice,
@@ -1635,4 +2195,6 @@ if __name__ == "__main__":
                       y_offset=0.0,
                       s_plot_range_m=16.9,
                       plot_ylim_mm=80.0,  
-                      main_energy_MeV_u=main_energy_MeV)  
+                      main_energy_MeV_u=main_energy_MeV,
+                      force_track_species=[(54, 124)],
+                      total_beam_power_W=total_beam_power_W)  

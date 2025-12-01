@@ -13,18 +13,18 @@ from beam_tracking import track_contaminants
 lithium_target = {
       'At': 6.94,       # Lithium
       'Zt': 3,          # Z = 3 (Lithium)
-      'Thick': 0.5,     # mg/cm²
+      'Thick': 0.86,     # mg/cm²
       'd': 0.51         # density g/cm³
 }
 
-prefix = "Zn64_analysis"
+prefix = "Si28_analysis"
 
 # This creates: `prefix_list.csv`,  `prefix_charge_distributions.csv`.
 # The first file contains the calculated contaminants based on A/q difference.
 # The second file contains the charge state distributions calculated by ETACHA4.
 contaminants, results = calculate_and_run_contaminants(
-    target_A=64,         # Main beam mass number at dipole
-    target_q=19,         # Main beam charge state at dipole
+    target_A=28,     # Main beam mass number at dipole
+    target_q=9,         # Main beam charge state at dipole
     beam_energy=20.0,    # Energy in MeV/u at stripper
     target_material=lithium_target,
     output_prefix=prefix
@@ -33,8 +33,8 @@ contaminants, results = calculate_and_run_contaminants(
 
 ## Beam tracking of main beam and contaminants through post-stripper lattice
 # main beam at stripper
-main_A = 64  
-main_q = 28.5
+main_A = 28
+main_q = 14
 main_energy = 19.85  # MeV/u
 
 
@@ -76,4 +76,7 @@ track_contaminants(csv_file,
                   y_offset=0.0,
                   s_plot_range_m=16.9,
                   plot_ylim_mm=80.0, 
-                  main_energy_MeV_u=main_energy)  
+                  main_energy_MeV_u=main_energy,
+                  force_track_species=[(54, 124)],
+                  total_beam_power_W=1e3  # 1 kW total beam power
+                  )  
