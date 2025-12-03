@@ -1,4 +1,4 @@
-# Contaminant Analysis for heavy ion accelerators
+# Contaminant Analysis for heavy ion accelerators (Linux version)
 This code calculates possible ion contaminants based on the A/q difference. 
 The charge state distribution after stripper is calculated with ETACHA4.
 Beam tracking and beam loss analysis are then implemented with JuTrack (pyJuTrack).
@@ -8,7 +8,7 @@ Beam tracking and beam loss analysis are then implemented with JuTrack (pyJuTrac
 ### 1. Configure ETACHA paths
 Open `etacha_batch_run.py` and update the following variables:
 
-- `ETACHA_EXE`: Full path to your `ETACHA4.exe`
+- `ETACHA_EXE`: Full path to your `ETACHA4.exe` in Windows. In Linux, use `etacha4` directly.
 - `RESULTS_DIR`: Directory where ETACHA stores output files  
   (typically `~/Documents/LISEcute/results`)
 

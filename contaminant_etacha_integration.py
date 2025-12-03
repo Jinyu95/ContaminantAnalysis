@@ -159,10 +159,9 @@ def run_etacha_for_contaminants(betacha_file, contaminant_results,
     --------
     Path : Path to results CSV file with filtered charge states
     """
-    if not Path(ETACHA_EXE).exists():
-        print(f"ETACHA not found at: {ETACHA_EXE}")
-        print("   Please update ETACHA_EXE path in etacha_batch_run.py")
-        return None
+    result = subprocess.run(["which", ETACHA_EXE], capture_output=True)
+    if result.returncode != 0:
+        print(f"ETACHA command '{ETACHA_EXE}' not found in PATH"); return None
     
     if not Path("template.etacha").exists():
         print("Missing template.etacha file")

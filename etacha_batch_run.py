@@ -3,11 +3,12 @@
 import re, csv, time, subprocess
 from pathlib import Path
 
-# Executable path for ETACHA4
-ETACHA_EXE   = r"C:\Program Files\LISEcute\ETACHA4.exe"
+# ETACHA4 command (global executable)
+# On Linux systems, etacha4 should be available in PATH
+ETACHA_EXE   = "etacha4"
 
 # Directory where ETACHA outputs results. Don't forget to clean up later.
-RESULTS_DIR  = Path(r"\\intranet.nscl.msu.edu\files\user\wan\My Documents\LISEcute\results")
+RESULTS_DIR  = Path(r"/home/wan/Documents/LISEcute/results")
 
 OUTPUT_CSV   = "test1_results.csv"
 BETACHA      = "test1.betacha"
@@ -54,7 +55,8 @@ def create_case_files(betacha_rows, betacha_path: Path):
     return case_files
 
 def kill_etacha():
-    subprocess.run(["taskkill", "/IM", "ETACHA4.exe", "/F"], capture_output=True)
+    # Kill any running etacha4 processes (Linux)
+    subprocess.run(["pkill", "-9", "etacha4"], capture_output=True)
 
 def snap_results():
     snap = {}
@@ -158,8 +160,10 @@ def run_case(prefix, case_path):
     return choose_final(prefix)
 
 def main():
-    if not Path(ETACHA_EXE).exists():
-        print("ETACHA not found"); return
+    # Check if etacha4 is available in PATH
+    result = subprocess.run(["which", ETACHA_EXE], capture_output=True)
+    if result.returncode != 0:
+        print(f"ETACHA command '{ETACHA_EXE}' not found in PATH"); return
     if not Path("template.etacha").exists():
         print("Missing template.etacha"); return
 
