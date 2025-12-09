@@ -10,7 +10,7 @@ import csv
 from pathlib import Path
 
 # Default species list to search for contaminants
-DEFAULT_SPECIES = ["H", "He", "C", "N", "O", "Ne", "Si", "Al", "Ar", "Ca", "Ni", "Zn", "Se", "Kr", "Ag", "Xe", "Tm", "W", "Pt", "Hg", "Bi", "U"]
+DEFAULT_SPECIES = ["H", "He", "C", "N", "O", "Ne", "Si", "Al", "Ar", "Ca", "Ni", "Zn", "Se", "Kr", "Sm", "Ag", "Xe", "Tm", "W", "Pt", "Hg", "Bi", "U"]
 
 # Species database with isotopes: {mass_amu: abundance_%}
 # Only naturally occurring isotopes with measurable abundances are included
@@ -333,15 +333,27 @@ species_database = {
         "possible_charges": range(1, 61)  # Z = 60
     },
     # Pm only has "*" abundance → skipped
+    # "Sm": {
+    #     "isotopes": {
+    #         143.911995: 3.07,
+    #         146.914893: 14.99,
+    #         147.914818: 11.24,
+    #         148.917180: 13.82,
+    #         149.917271: 7.38,
+    #         151.919728: 26.75,
+    #         153.922205: 22.75
+    #     },
+    #     "possible_charges": range(1, 63)  # Z = 62
+    # },
     "Sm": {
         "isotopes": {
-            143.911995: 3.07,
-            146.914893: 14.99,
-            147.914818: 11.24,
-            148.917180: 13.82,
-            149.917271: 7.38,
-            151.919728: 26.75,
-            153.922205: 22.75
+            143.911995: 85.9,
+            146.914893: 3.88,
+            147.914818: 2.18,
+            148.917180: 2.19,
+            149.917271: 1.02,
+            151.919728: 2.8,
+            153.922205: 2.02
         },
         "possible_charges": range(1, 63)  # Z = 62
     },

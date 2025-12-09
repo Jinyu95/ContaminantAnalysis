@@ -13,29 +13,30 @@ from beam_tracking import track_contaminants
 lithium_target = {
       'At': 6.94,       # Lithium
       'Zt': 3,          # Z = 3 (Lithium)
-      'Thick': 0.86,     # mg/cm²
+      'Thick': 0.9,     # mg/cm²
       'd': 0.51         # density g/cm³
 }
 
-prefix = "Si28_analysis"
+prefix = "Sm154_analysis"
+
+## Main beam
+main_A = 154
+main_q_before = 26
+main_q_after = 53
+main_energy_before = 19.0  # MeV/u
+main_energy_after = 18.4  # MeV/u
+
 
 # This creates: `prefix_list.csv`,  `prefix_charge_distributions.csv`.
 # The first file contains the calculated contaminants based on A/q difference.
 # The second file contains the charge state distributions calculated by ETACHA4.
 contaminants, results = calculate_and_run_contaminants(
-    target_A=28,     # Main beam mass number at dipole
-    target_q=9,         # Main beam charge state at dipole
-    beam_energy=20.0,    # Energy in MeV/u at stripper
+    target_A=144,     # Main beam mass number at dipole
+    target_q=main_q_before,         # Main beam charge state at dipole
+    beam_energy=main_energy_before,    # Energy in MeV/u at stripper
     target_material=lithium_target,
     output_prefix=prefix
 )
-
-
-## Beam tracking of main beam and contaminants through post-stripper lattice
-# main beam at stripper
-main_A = 28
-main_q = 14
-main_energy = 19.85  # MeV/u
 
 
 # import the lattice and aperture.
@@ -64,7 +65,7 @@ track_contaminants(csv_file,
                   lattice=lattice,
                   aperture=None,  # Not used. apertures are defined in lattice elements
                   main_A=main_A,
-                  main_q=main_q,
+                  main_q=main_q_after,
                   emit_x=emit_n_x,
                   emit_y=emit_n_y,
                   beta_twiss_x=beta_twiss_x,
@@ -76,7 +77,7 @@ track_contaminants(csv_file,
                   y_offset=0.0,
                   s_plot_range_m=16.9,
                   plot_ylim_mm=80.0, 
-                  main_energy_MeV_u=main_energy,
+                  main_energy_MeV_u=main_energy_after,
                   force_track_species=[(54, 124)],
                   total_beam_power_W=1e3  # 1 kW total beam power
                   )  
